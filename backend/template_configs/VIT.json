@@ -41,12 +41,12 @@
     "height": 80
   },
   "colors": {
-    "primary": "#6E9AD6",
-    "secondary": "#425C80",
-    "text": "#0F172A",
+    "primary": "#2563EB",
+    "secondary": "#1E2653",
+    "text": "#1E293B",
     "background": "#FFFFFF",
-    "code_bg": "#1E1E2E",
-    "code_text": "#F8F8F2"
+    "code_bg": "#0F172A",
+    "code_text": "#F8FAFC"
   },
   "fonts": {
     "title": "Arial",

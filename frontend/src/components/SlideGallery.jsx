@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download,
   Code2,
@@ -30,6 +30,20 @@ export default function SlideGallery({
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [showVerification, setShowVerification] = useState(true);
+
+  // Keyboard navigation (Left / Right arrow keys)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'ArrowLeft') {
+        setSelectedSlideIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === 'ArrowRight') {
+        setSelectedSlideIndex((prev) => Math.min((deck?.slides?.length || 1) - 1, prev + 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deck?.slides?.length]);
 
   if (!deck || !deck.slides || deck.slides.length === 0) return null;
 
@@ -142,61 +156,84 @@ export default function SlideGallery({
 
       {/* Main Slide Stage + Metadata Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: High-Res Slide Preview */}
-        <div className={`lg:col-span-2 rounded-2xl p-4 border flex flex-col justify-between shadow-2xl transition-colors duration-200 ${
-          isDark ? 'bg-[#111827]/90 border-gray-800' : 'bg-white border-gray-200 shadow-md'
+        {/* Left: High-Res Slide Preview Canvas */}
+        <div className={`lg:col-span-2 rounded-2xl p-5 border flex flex-col justify-between shadow-2xl transition-colors duration-200 ${
+          isDark ? 'bg-[#0F172A]/90 border-slate-800' : 'bg-white border-slate-200 shadow-md'
         }`}>
-          <div className="relative rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center group shadow-inner">
-            {currentPreviewUrl ? (
-              <img
-                src={currentPreviewUrl}
-                alt={`Slide ${currentSlide.id} Preview`}
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-gray-500 text-sm">Preview rendering...</div>
-            )}
+          {/* Authentic Studio Presentation Canvas */}
+          <div className="relative rounded-2xl overflow-hidden bg-slate-100 dark:bg-[#080D1A] border border-slate-200 dark:border-slate-800/80 p-3 sm:p-4 flex items-center justify-center shadow-inner">
+            <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-[0_14px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.7)] border border-slate-200/90 dark:border-slate-700/70 bg-white group flex items-center justify-center">
+              {currentPreviewUrl ? (
+                <img
+                  src={currentPreviewUrl}
+                  alt={`Slide ${currentSlide.id} Preview`}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-slate-400 text-sm animate-pulse">Rendering high-resolution slide preview...</div>
+              )}
 
-            {/* Quick Enlarge Button */}
-            {currentPreviewUrl && (
-              <button
-                onClick={() => setFullscreenImage(currentPreviewUrl)}
-                className="absolute top-3 right-3 p-2 rounded-lg bg-black/60 text-white/80 hover:text-white hover:bg-black/80 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
-                title="View Full Resolution"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
-            )}
+              {/* Quick Enlarge Overlay Button */}
+              {currentPreviewUrl && (
+                <button
+                  onClick={() => setFullscreenImage(currentPreviewUrl)}
+                  className="absolute top-3 right-3 px-2.5 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white/90 hover:text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all text-xs flex items-center space-x-1.5 shadow-lg"
+                  title="View Full Resolution (Fullscreen)"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span>Expand</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Slide Navigation controls */}
-          <div className="flex items-center justify-between pt-4 px-2">
+          <div className="flex items-center justify-between pt-4 px-1">
             <button
               onClick={() => setSelectedSlideIndex((prev) => Math.max(0, prev - 1))}
               disabled={selectedSlideIndex === 0}
-              className={`px-3 py-1.5 rounded-lg border text-xs flex items-center space-x-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 disabled:opacity-35 disabled:cursor-not-allowed transition-all ${
                 isDark
-                  ? 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800'
-                  : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700'
+                  : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200 hover:border-slate-400'
               }`}
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Previous</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-black/10 dark:bg-white/10 text-slate-400">←</kbd>
             </button>
 
-            <span className={`text-xs font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Slide <span className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{selectedSlideIndex + 1}</span> of {deck.slides.length}
-            </span>
+            <div className="flex items-center space-x-2">
+              <span className={`text-xs font-mono font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Slide <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedSlideIndex + 1}</span> of {deck.slides.length}
+              </span>
+              <div className="hidden sm:flex items-center space-x-1 pl-2">
+                {deck.slides.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedSlideIndex(i)}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      selectedSlideIndex === i
+                        ? 'w-5 bg-blue-600'
+                        : isDark
+                        ? 'bg-slate-800 hover:bg-slate-700'
+                        : 'bg-slate-300 hover:bg-slate-400'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
 
             <button
               onClick={() => setSelectedSlideIndex((prev) => Math.min(deck.slides.length - 1, prev + 1))}
               disabled={selectedSlideIndex === deck.slides.length - 1}
-              className={`px-3 py-1.5 rounded-lg border text-xs flex items-center space-x-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 disabled:opacity-35 disabled:cursor-not-allowed transition-all ${
                 isDark
-                  ? 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800'
-                  : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700'
+                  : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200 hover:border-slate-400'
               }`}
             >
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-black/10 dark:bg-white/10 text-slate-400">→</kbd>
               <span>Next</span>
               <ChevronRight className="w-4 h-4" />
             </button>

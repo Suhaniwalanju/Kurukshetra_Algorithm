@@ -123,8 +123,14 @@ class TemplateRegistry:
                 if img.size != (1920, 1080):
                     # Resize preserving widescreen aspect ratio
                     resized = img.resize((1920, 1080), Image.Resampling.LANCZOS)
+                    if college.upper() == "VIT":
+                        draw = ImageDraw.Draw(resized)
+                        draw.rectangle([750, 1015, 1170, 1075], fill=(255, 255, 255))
                     resized.save(dest_png, "PNG")
                 else:
+                    if college.upper() == "VIT":
+                        draw = ImageDraw.Draw(img)
+                        draw.rectangle([750, 1015, 1170, 1075], fill=(255, 255, 255))
                     img.save(dest_png, "PNG")
                 return dest_png
         except Exception as e:

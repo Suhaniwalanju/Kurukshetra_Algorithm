@@ -111,20 +111,42 @@ class LayoutEngine:
         self.dummy_img = Image.new("RGBA", (1920, 1080), (255, 255, 255, 0))
         self.draw = ImageDraw.Draw(self.dummy_img)
 
+    def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+        """Wraps text into lines that fit within max_width."""
+        words = text.split()
+        if not words:
+            return [""]
+        wrapped_lines = []
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            bbox = self.draw.textbbox((0, 0), test_line, font=font)
+            w = bbox[2] - bbox[0]
+            if w <= max_width or not current_line:
+                current_line.append(word)
+            else:
+                wrapped_lines.append(" ".join(current_line))
+                current_line = [word]
+        if current_line:
+            wrapped_lines.append(" ".join(current_line))
+        return wrapped_lines
+
     def measure_text_lines(
-        self, lines: List[str], font_family: str, font_size_pt: int, max_width: int, line_spacing_ratio: float = 1.3
+        self, lines: List[str], font_family: str, font_size_pt: int, max_width: int, line_spacing_ratio: float = 1.35
     ) -> Tuple[int, int]:
-        """Measures bounding dimensions for a list of text lines."""
+        """Measures bounding dimensions for a list of text lines, wrapping each line to max_width."""
         font = get_font(font_family, font_size_pt)
         max_line_w = 0
         total_h = 0
         line_height = int(font_size_pt * line_spacing_ratio)
 
         for line in lines:
-            bbox = self.draw.textbbox((0, 0), line, font=font)
-            w = bbox[2] - bbox[0]
-            max_line_w = max(max_line_w, w)
-            total_h += line_height
+            wrapped = self.wrap_text(line, font, max(max_width, 100))
+            for w_line in wrapped:
+                bbox = self.draw.textbbox((0, 0), w_line, font=font)
+                w = bbox[2] - bbox[0]
+                max_line_w = max(max_line_w, w)
+                total_h += line_height
 
         return max(max_line_w, 10), max(total_h, 10)
 
@@ -306,54 +328,72 @@ class LayoutEngine:
 
             if has_code or has_diagram:
                 # Two-column layout:
-                # Left Column: Bullets (or Bullets + Output)
-                # Right Column: Code block / Diagram
-                col_gutter = MIN_GUTTER_PX + 10
-                left_col_w = (config.content_zone.width - col_gutter) // 2
-                right_col_w = left_col_w
+                # Left Column (44%): Bullets (strictly <= 8 words per bullet)
+                # Right Column (56%): Code block / Diagram
+                col_gutter = MIN_GUTTER_PX + 12
+                total_w = config.content_zone.width - col_gutter
+                left_col_w = int(total_w * 0.44)
+                right_col_w = total_w - left_col_w
                 left_col_x = config.content_zone.left
                 right_col_x = left_col_x + left_col_w + col_gutter
 
                 # Measure bullets in left column
+                inner_w = left_col_w - 60
                 body_size = BODY_FONT_DEFAULT
                 bw, bh = self.measure_text_lines(
-                    [f"• {b}" for b in slide.bullets], config.fonts.body, body_size, left_col_w
+                    [f"• {b}" for b in slide.bullets], config.fonts.body, body_size, inner_w
                 )
-                while bh > avail_content_h and body_size > BODY_FONT_MIN:
+                while bh + 60 > avail_content_h and body_size > BODY_FONT_MIN:
                     body_size -= 2
                     bw, bh = self.measure_text_lines(
-                        [f"• {b}" for b in slide.bullets], config.fonts.body, body_size, left_col_w
+                        [f"• {b}" for b in slide.bullets], config.fonts.body, body_size, inner_w
                     )
+
+                bullets_needed = bh + 60
+
+                # Right Column: Code block or Diagram
+                code_needed = 0
+                if has_code:
+                    code_lines = slide.code.source.strip().split("\n")
+                    code_size = CODE_FONT_DEFAULT
+                    has_out = bool(slide.code.expected_output)
+                    out_extra = 70 if has_out else 20
+
+                    # Adjust code_size so longest line fits within right_col_w - 48
+                    longest_w = max(self.draw.textbbox((0, 0), line, font=get_font(config.fonts.code, code_size))[2] for line in code_lines) if code_lines else 0
+                    while (longest_w > right_col_w - 52 or (len(code_lines) * int(code_size * 1.35) + 60 + out_extra > avail_content_h)) and code_size > 14:
+                        code_size -= 1
+                        longest_w = max(self.draw.textbbox((0, 0), line, font=get_font(config.fonts.code, code_size))[2] for line in code_lines) if code_lines else 0
+
+                    cw, ch = self.measure_text_lines(code_lines, config.fonts.code, code_size, right_col_w - 40)
+                    plan.font_sizes["code"] = code_size
+                    code_needed = ch + 60 + out_extra
+
+                elif has_diagram:
+                    code_needed = 350
+
+                shared_h = min(avail_content_h, max(340, bullets_needed, code_needed))
 
                 bullets_box = ElementBox(
                     id_str=f"slide_{slide.id}_bullets",
                     left=left_col_x,
                     top=content_y,
                     width=left_col_w,
-                    height=min(bh + 15, avail_content_h),
+                    height=shared_h,
                     element_type="bullets",
                 )
                 plan.font_sizes["body"] = body_size
                 placed_boxes.append(bullets_box)
 
-                # Right Column: Code block or Diagram
                 if has_code:
-                    code_lines = slide.code.source.strip().split("\n")
-                    code_size = CODE_FONT_DEFAULT
-                    cw, ch = self.measure_text_lines(code_lines, config.fonts.code, code_size, right_col_w)
-                    while ch > avail_content_h - 60 and code_size > CODE_FONT_MIN:
-                        code_size -= 2
-                        cw, ch = self.measure_text_lines(code_lines, config.fonts.code, code_size, right_col_w)
-
                     code_box = ElementBox(
                         id_str=f"slide_{slide.id}_code",
                         left=right_col_x,
                         top=content_y,
                         width=right_col_w,
-                        height=min(ch + 70, avail_content_h),
+                        height=shared_h,
                         element_type="code",
                     )
-                    plan.font_sizes["code"] = code_size
                     placed_boxes.append(code_box)
 
                 elif has_diagram:
@@ -362,7 +402,7 @@ class LayoutEngine:
                         left=right_col_x,
                         top=content_y,
                         width=right_col_w,
-                        height=avail_content_h,
+                        height=shared_h,
                         element_type="diagram",
                     )
                     placed_boxes.append(diag_box)

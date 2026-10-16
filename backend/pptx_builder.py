@@ -127,11 +127,11 @@ class PPTXBuilder:
         p.alignment = PP_ALIGN.LEFT
 
     def _add_presented_by(self, slide, text: str, left, top, width, height, plan: SlideLayoutPlan, config: TemplateLayoutConfig):
-        # Subtle elegant pill badge on cover/closing slides
+        # Elegant white presenter card on cover slide
         rect = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
         rect.fill.solid()
-        rect.fill.fore_color.rgb = hex_to_rgb(config.colors.primary)
-        rect.line.color.rgb = hex_to_rgb(config.colors.secondary)
+        rect.fill.fore_color.rgb = RGBColor(255, 255, 255)
+        rect.line.color.rgb = hex_to_rgb(config.colors.primary)
         rect.line.width = Pt(1.5)
 
         tf = rect.text_frame
@@ -140,9 +140,9 @@ class PPTXBuilder:
         p = tf.paragraphs[0]
         p.text = text
         p.font.name = config.fonts.body
-        p.font.size = Pt(plan.font_sizes.get("presented_by", 28))
+        p.font.size = Pt(plan.font_sizes.get("presented_by", 26))
         p.font.bold = True
-        p.font.color.rgb = RGBColor(255, 255, 255)
+        p.font.color.rgb = hex_to_rgb(config.colors.secondary)
         p.alignment = PP_ALIGN.CENTER
 
     def _add_footer(self, slide, text: str, left, top, width, height, plan: SlideLayoutPlan, config: TemplateLayoutConfig, badge: Optional[str] = None):
@@ -152,7 +152,7 @@ class PPTXBuilder:
         p = tf.paragraphs[0]
         p.text = text
         p.font.name = config.fonts.body
-        p.font.size = Pt(13)
+        p.font.size = Pt(12)
         p.font.color.rgb = RGBColor(100, 116, 139)
         p.alignment = PP_ALIGN.LEFT
 
@@ -170,7 +170,7 @@ class PPTXBuilder:
             btf.word_wrap = True
             btf.vertical_anchor = MSO_ANCHOR.MIDDLE
             bp = btf.paragraphs[0]
-            bp.text = badge
+            bp.text = f"✓ {badge}"
             bp.font.name = config.fonts.code
             bp.font.size = Pt(10)
             bp.font.bold = True
@@ -178,17 +178,17 @@ class PPTXBuilder:
             bp.alignment = PP_ALIGN.CENTER
 
     def _add_bullets(self, slide, slide_data: Slide, left, top, width, height, plan: SlideLayoutPlan, config: TemplateLayoutConfig):
-        # Card container with subtle backdrop
+        # Subtle card container for bullets
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
         card.fill.solid()
-        card.fill.fore_color.rgb = RGBColor(255, 255, 255)
-        card.line.color.rgb = hex_to_rgb(config.colors.primary)
+        card.fill.fore_color.rgb = RGBColor(248, 250, 252)
+        card.line.color.rgb = RGBColor(226, 232, 240)
         card.line.width = Pt(1)
 
         tf = card.text_frame
         tf.word_wrap = True
         tf.vertical_anchor = MSO_ANCHOR.TOP
-        font_size = plan.font_sizes.get("body", 28)
+        font_size = plan.font_sizes.get("body", 26)
 
         for idx, bullet in enumerate(slide_data.bullets):
             p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
@@ -212,12 +212,12 @@ class PPTXBuilder:
         if not code_data or not code_data.source:
             return
 
-        # 1. Dark Code Container Shape
+        # 1. Dark Code Container Shape (Slate 900)
         dark_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
         dark_box.fill.solid()
         dark_box.fill.fore_color.rgb = hex_to_rgb(config.colors.code_bg)
-        dark_box.line.color.rgb = hex_to_rgb(config.colors.primary)
-        dark_box.line.width = Pt(1.5)
+        dark_box.line.color.rgb = RGBColor(30, 41, 59)
+        dark_box.line.width = Pt(1)
 
         tf = dark_box.text_frame
         tf.word_wrap = True
@@ -228,8 +228,8 @@ class PPTXBuilder:
         p_head = tf.paragraphs[0]
         p_head.text = lang_header
         p_head.font.name = config.fonts.code
-        p_head.font.size = Pt(13)
-        p_head.font.color.rgb = RGBColor(140, 155, 175)
+        p_head.font.size = Pt(12)
+        p_head.font.color.rgb = RGBColor(96, 165, 250)
         p_head.space_after = Pt(8)
 
         # 2. Syntax Highlighted Code Runs using Pygments
