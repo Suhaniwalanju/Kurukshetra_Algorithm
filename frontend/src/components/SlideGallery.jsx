@@ -6,11 +6,26 @@ import {
   ChevronRight,
   Maximize2,
   CheckCircle,
+  CheckCircle2,
   ShieldCheck,
+  RefreshCw,
+  Sparkles,
+  Terminal,
 } from 'lucide-react';
 import VerificationDashboard from './VerificationDashboard';
+import SupportingMaterialsView from './SupportingMaterialsView';
 
-export default function SlideGallery({ deck, onDownload, theme }) {
+export default function SlideGallery({
+  deck,
+  onDownload,
+  theme,
+  isApproved,
+  onApprove,
+  onOpenExport,
+  onOpenRegenerate,
+  onOpenMigration,
+  onOpenLiveMode,
+}) {
   const isDark = theme === 'dark';
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
   const [fullscreenImage, setFullscreenImage] = useState(null);
@@ -47,26 +62,70 @@ export default function SlideGallery({ deck, onDownload, theme }) {
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {!isApproved && onApprove && (
+            <button
+              onClick={onApprove}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-lg shadow-emerald-500/20 transition-all transform hover:scale-[1.02]"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Approve Deck</span>
+            </button>
+          )}
+
+          {onOpenLiveMode && (
+            <button
+              onClick={onOpenLiveMode}
+              className="px-3.5 py-2.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold text-xs flex items-center space-x-1.5 transition-all"
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span>Live Class Mode</span>
+            </button>
+          )}
+
+          {onOpenMigration && (
+            <button
+              onClick={onOpenMigration}
+              className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center space-x-1.5 border transition-all ${
+                isDark
+                  ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                  : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Migrate</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowVerification(!showVerification)}
-            className={`px-4 py-3 rounded-xl font-semibold text-xs flex items-center space-x-2 border transition-all ${
+            className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center space-x-1.5 border transition-all ${
               isDark
                 ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
                 : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
             }`}
           >
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>{showVerification ? 'Hide Verification' : 'Verification Core'}</span>
+            <span>{showVerification ? 'Hide QA' : 'Verification QA'}</span>
           </button>
 
-          <button
-            onClick={onDownload}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-semibold text-sm flex items-center space-x-2 shadow-xl shadow-blue-500/25 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            <span>Download .PPTX Deck</span>
-          </button>
+          {onOpenExport ? (
+            <button
+              onClick={onOpenExport}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xl shadow-blue-500/25 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export All</span>
+            </button>
+          ) : (
+            <button
+              onClick={onDownload}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xl shadow-blue-500/25 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download .PPTX</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -75,6 +134,8 @@ export default function SlideGallery({ deck, onDownload, theme }) {
         <VerificationDashboard
           deckId={deck.id}
           theme={theme}
+          isApproved={isApproved}
+          onApprove={onApprove}
           onRefreshDeck={() => window.location.reload()}
         />
       )}
@@ -151,21 +212,21 @@ export default function SlideGallery({ deck, onDownload, theme }) {
               {currentSlide.type} Slide
             </span>
             <h3 className="font-heading font-bold text-lg mt-1">
-              {currentSlide.title}
+              {currentSlide.title || 'Untitled Slide'}
             </h3>
             <span className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Words in title: {currentSlide.title.split(' ').length} / 8 max
+              Words in title: {(currentSlide.title || '').trim().split(/\s+/).filter(Boolean).length} / 8 max
             </span>
           </div>
 
           {/* Bullets Inspector with Word Count Tags */}
           <div className="space-y-2">
             <h4 className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Bullet Points ({currentSlide.bullets.length} / 5 max)
+              Bullet Points ({(currentSlide.bullets || []).length} / 5 max)
             </h4>
             <div className="space-y-2">
-              {currentSlide.bullets.map((b, idx) => {
-                const wordCount = b.trim().split(/\s+/).length;
+              {(currentSlide.bullets || []).map((b, idx) => {
+                const wordCount = (b || '').trim().split(/\s+/).filter(Boolean).length;
                 return (
                   <div
                     key={idx}
@@ -184,31 +245,52 @@ export default function SlideGallery({ deck, onDownload, theme }) {
           </div>
 
           {/* Code Snippet with Expected Output */}
-          {currentSlide.code && currentSlide.code.source && (
-            <div className="space-y-2">
-              <h4 className={`text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                <Code2 className="w-3.5 h-3.5 text-blue-500" />
-                <span>Code Block ({currentSlide.code.language.toUpperCase()})</span>
-              </h4>
-              <div className="p-3.5 rounded-xl bg-[#090D16] border border-gray-800 font-mono text-xs space-y-3">
-                <pre className="text-blue-300 overflow-x-auto leading-relaxed">
-                  {currentSlide.code.source}
-                </pre>
-                {currentSlide.code.expected_output && (
-                  <div className="pt-2 border-t border-gray-800 text-[11px]">
-                    <span className="text-emerald-400 font-bold">Expected Output: </span>
-                    <span className="text-gray-300">{currentSlide.code.expected_output}</span>
-                  </div>
-                )}
+          {(() => {
+            if (!currentSlide.code) return null;
+            const codeSource = typeof currentSlide.code === 'string' ? currentSlide.code : currentSlide.code?.source;
+            const codeLang = (typeof currentSlide.code === 'object' && currentSlide.code?.language) ? currentSlide.code.language : (deck.tech || 'CODE');
+            const expectedOut = typeof currentSlide.code === 'object' ? currentSlide.code?.expected_output : null;
+            if (!codeSource) return null;
+
+            return (
+              <div className="space-y-2">
+                <h4 className={`text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <Code2 className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Code Block ({(codeLang || 'CODE').toUpperCase()})</span>
+                </h4>
+                <div className="p-3.5 rounded-xl bg-[#090D16] border border-gray-800 font-mono text-xs space-y-3">
+                  <pre className="text-blue-300 overflow-x-auto leading-relaxed">
+                    {codeSource}
+                  </pre>
+                  {expectedOut && (
+                    <div className="pt-2 border-t border-gray-800 text-[11px]">
+                      <span className="text-emerald-400 font-bold">Expected Output: </span>
+                      <span className="text-gray-300">{expectedOut}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Speaker Hint */}
           {currentSlide.speaker_hint && (
             <div className="p-3 rounded-xl bg-purple-500/5 border border-purple-500/20 text-xs">
               <span className="text-purple-600 dark:text-purple-400 font-semibold block mb-0.5">Speaker Hint:</span>
               <p className={`italic ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{currentSlide.speaker_hint}</p>
+            </div>
+          )}
+
+          {/* Quick Single Slide Regenerate Button */}
+          {onOpenRegenerate && (
+            <div className="pt-2">
+              <button
+                onClick={() => onOpenRegenerate(selectedSlideIndex)}
+                className="w-full py-2.5 px-3 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Regenerate Slide {selectedSlideIndex + 1} Only</span>
+              </button>
             </div>
           )}
         </div>
@@ -259,6 +341,18 @@ export default function SlideGallery({ deck, onDownload, theme }) {
           })}
         </div>
       </div>
+
+      {/* Phase 3: Supporting Materials View (Student Notes, Professor Notes, Quiz, Cheat Sheet) */}
+      <SupportingMaterialsView
+        deckId={deck.id}
+        theme={theme}
+        isApproved={isApproved}
+        onApprove={onApprove}
+        onOpenExport={onOpenExport}
+        onOpenRegenerate={() => onOpenRegenerate && onOpenRegenerate(selectedSlideIndex)}
+        onOpenMigration={onOpenMigration}
+        onOpenLiveMode={onOpenLiveMode}
+      />
 
       {/* Fullscreen Image Lightbox Modal */}
       {fullscreenImage && (

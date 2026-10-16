@@ -177,8 +177,41 @@ class SandboxExecutionEngine:
     ) -> ExecutionResult:
         """
         Executes a single code snippet in a clean sandbox.
+        Delegates to track-specific LanguageRunner from runtime_registry.
         """
         lang = language.lower().strip()
+        from backend.runtimes.registry import runtime_registry
+        runner = runtime_registry.get_runner(lang)
+        if runner:
+            files = runner.prepare(source_code)
+            wrapped = list(files.values())[0] if files else source_code
+            r = runner.execute(source_code, timeout_sec=timeout_sec)
+
+            dep_level = "none"
+            if any("removal" in d.lower() for d in r.deprecations):
+                dep_level = "removal"
+            elif r.deprecations or r.status == "warning":
+                dep_level = "warning"
+
+            return ExecutionResult(
+                snippet_id=snippet_id,
+                language=language,
+                version=version or runner.pinned_version,
+                source_code=source_code,
+                wrapped_code=wrapped,
+                command_executed=r.command,
+                exit_code=r.exit_code,
+                stdout=r.stdout,
+                stderr=r.stderr,
+                compiler_output=r.compile_output,
+                duration_ms=r.duration_ms,
+                timed_out=(r.status == "timeout"),
+                network_blocked=("Network Access Denied" in r.stderr or "PermissionError" in r.stderr),
+                deprecation_level=dep_level,
+                deprecation_details="; ".join(r.deprecations),
+                sandbox_backend="docker" if runner.is_docker_available() else "isolated_local_subprocess",
+            )
+
         wrapped_code, main_file = CodeWrapper.wrap_code(lang, source_code)
 
         if self.docker_active:

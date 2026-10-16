@@ -1,0 +1,56 @@
+{
+  "college": "DPU",
+  "slide_width": 1920,
+  "slide_height": 1080,
+  "aspect_ratio": "16:9",
+  "template_image_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\backend\\template_configs\\DPU_background.png",
+  "title_zone": {
+    "left": 312,
+    "top": 150,
+    "width": 1296,
+    "height": 100
+  },
+  "content_zone": {
+    "left": 312,
+    "top": 275,
+    "width": 1296,
+    "height": 680
+  },
+  "code_zone": {
+    "left": 312,
+    "top": 275,
+    "width": 628,
+    "height": 680
+  },
+  "diagram_zone": {
+    "left": 980,
+    "top": 275,
+    "width": 628,
+    "height": 680
+  },
+  "footer_zone": {
+    "left": 312,
+    "top": 960,
+    "width": 1296,
+    "height": 45
+  },
+  "presented_by_zone": {
+    "left": 352,
+    "top": 875,
+    "width": 1216,
+    "height": 80
+  },
+  "colors": {
+    "primary": "#002147",
+    "secondary": "#00132A",
+    "text": "#0F172A",
+    "background": "#FAFAFA",
+    "code_bg": "#1E1E2E",
+    "code_text": "#F8F8F2"
+  },
+  "fonts": {
+    "title": "Arial",
+    "body": "Segoe UI",
+    "code": "Consolas"
+  }
+}

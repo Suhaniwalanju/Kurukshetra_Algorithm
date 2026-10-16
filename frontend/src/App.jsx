@@ -1,21 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
+import Stepper from './components/Stepper';
 import DeckForm from './components/DeckForm';
 import GenerationProgress from './components/GenerationProgress';
 import SlideGallery from './components/SlideGallery';
 import NonCodingErrorModal from './components/NonCodingErrorModal';
+import ExportCenterModal from './components/ExportCenterModal';
+import SingleSlideRegenModal from './components/SingleSlideRegenModal';
+import VersionMigrationModal from './components/VersionMigrationModal';
+import LiveClassModeModal from './components/LiveClassModeModal';
+import HistoryModal from './components/HistoryModal';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('studio_theme') || 'dark';
   });
   const [colleges, setColleges] = useState([]);
+  const [runtimes, setRuntimes] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [currentDeckId, setCurrentDeckId] = useState(null);
   const [deckData, setDeckData] = useState(null);
+  const [materialsData, setMaterialsData] = useState(null);
   const [nonCodingError, setNonCodingError] = useState(null);
   const [suggestedTopic, setSuggestedTopic] = useState(null);
+  const [activeStep, setActiveStep] = useState(1);
+
+  // Modals
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showRegenModal, setShowRegenModal] = useState(false);
+  const [regenSlideIndex, setRegenSlideIndex] = useState(0);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [showLiveModeModal, setShowLiveModeModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const isDark = theme === 'dark';
 
@@ -28,10 +45,6 @@ export default function App() {
     }
   }, [theme]);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
-
   const fetchInitialData = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/templates');
@@ -42,7 +55,21 @@ export default function App() {
     } catch (err) {
       console.error('Error loading templates:', err);
     }
+
+    try {
+      const runtimesRes = await fetch('http://localhost:8000/api/runtimes');
+      if (runtimesRes.ok) {
+        const runtimesData = await runtimesRes.json();
+        setRuntimes(runtimesData.tracks || []);
+      }
+    } catch (err) {
+      console.error('Error loading runtimes:', err);
+    }
   };
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
   const handleToggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -53,6 +80,7 @@ export default function App() {
     setIsGenerating(true);
     setStatusMessage('Initiating topic validation and curriculum planning...');
     setDeckData(null);
+    setMaterialsData(null);
 
     try {
       const res = await fetch('http://localhost:8000/api/decks', {
@@ -75,6 +103,7 @@ export default function App() {
       const data = await res.json();
       const deckId = data.deck_id;
       setCurrentDeckId(deckId);
+      setActiveStep(2);
 
       // Start polling status
       pollDeckStatus(deckId);
@@ -97,6 +126,7 @@ export default function App() {
             clearInterval(interval);
             setIsGenerating(false);
             setDeckData(data);
+            setActiveStep(3);
           } else if (data.status === 'failed') {
             clearInterval(interval);
             setIsGenerating(false);
@@ -109,35 +139,158 @@ export default function App() {
     }, 1500);
   };
 
-  const handleDownload = () => {
+  const loadDeckById = async (deckId) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/decks/${deckId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDeckData(data);
+        setCurrentDeckId(deckId);
+        if (data.materials_status === 'ready') {
+          setActiveStep(6);
+          fetchMaterials(deckId);
+        } else if (data.approved) {
+          setActiveStep(5);
+        } else {
+          setActiveStep(3);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load deck:', e);
+    }
+  };
+
+  const fetchMaterials = async (deckId) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/decks/${deckId}/materials`);
+      if (res.ok) {
+        const data = await res.json();
+        setMaterialsData(data);
+      }
+    } catch (e) {
+      console.error('Error fetching materials:', e);
+    }
+  };
+
+  const handleApproveDeck = async () => {
+    if (!currentDeckId) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/decks/${currentDeckId}/approve`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setDeckData((prev) => ({
+          ...prev,
+          approved: true,
+          approved_at: updated.approved_at,
+        }));
+        setActiveStep(6);
+      } else {
+        const err = await res.json();
+        alert(`Approval error: ${err.detail || 'Could not approve deck'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Network error approving deck');
+    }
+  };
+
+  const handleDownloadDeck = () => {
     if (!currentDeckId) return;
     window.open(`http://localhost:8000/api/decks/${currentDeckId}/download`, '_blank');
   };
 
+  const handleRegeneratedSlide = (result) => {
+    if (result && deckData) {
+      const updatedSlides = [...(deckData.slides || [])];
+      if (result.slide_index < updatedSlides.length) {
+        updatedSlides[result.slide_index] = result.new_slide;
+      }
+      const updatedPreviews = [...(deckData.preview_paths || [])];
+      if (result.preview_path && result.slide_index < updatedPreviews.length) {
+        updatedPreviews[result.slide_index] = result.preview_path;
+      }
+      setDeckData({
+        ...deckData,
+        slides: updatedSlides,
+        preview_paths: updatedPreviews,
+      });
+    }
+  };
+
+  const handleMigratedDeck = () => {
+    if (currentDeckId) {
+      loadDeckById(currentDeckId);
+    }
+  };
+
+  const deckState = {
+    hasDeck: !!deckData,
+    verified: !!(deckData?.verified),
+    approved: !!(deckData?.approved),
+    materialsReady: deckData?.materials_status === 'ready',
+  };
+
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-200 ${
-      isDark ? 'bg-[#080C14] text-gray-100' : 'bg-[#F8FAFC] text-gray-900'
-    }`}>
-      <Navbar theme={theme} onToggleTheme={handleToggleTheme} />
+    <div
+      className={`min-h-screen flex flex-col transition-colors duration-200 ${
+        isDark ? 'bg-[#080C14] text-gray-100' : 'bg-[#F8FAFC] text-gray-900'
+      }`}
+    >
+      <Navbar
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+        hasDeck={!!deckData}
+        onOpenLiveMode={() => setShowLiveModeModal(true)}
+        onOpenHistory={() => setShowHistoryModal(true)}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Main User Input Form */}
-        <DeckForm
-          colleges={colleges}
-          onGenerate={handleGenerate}
-          isGenerating={isGenerating}
-          initialData={suggestedTopic}
+        {/* Step-by-Step Studio Stepper */}
+        <Stepper
+          currentStep={activeStep}
+          onSelectStep={(step) => {
+            setActiveStep(step);
+            if (step === 7) setShowExportModal(true);
+          }}
           theme={theme}
+          deckState={deckState}
         />
+
+        {/* Form is visible on Step 1 or whenever no deck is active */}
+        {(!deckData || activeStep === 1) && (
+          <DeckForm
+            colleges={colleges}
+            runtimes={runtimes}
+            onGenerate={handleGenerate}
+            isGenerating={isGenerating}
+            initialData={suggestedTopic}
+            theme={theme}
+          />
+        )}
 
         {/* Realtime Generation Progress */}
         {isGenerating && (
           <GenerationProgress statusMessage={statusMessage} theme={theme} />
         )}
 
-        {/* Verified Slide Deck Gallery */}
-        {deckData && (
-          <SlideGallery deck={deckData} onDownload={handleDownload} theme={theme} />
+        {/* Verified Slide Deck Gallery + Supporting Materials */}
+        {deckData && !isGenerating && (
+          <SlideGallery
+            deck={deckData}
+            theme={theme}
+            isApproved={deckData.approved}
+            onApprove={handleApproveDeck}
+            onDownload={handleDownloadDeck}
+            onOpenExport={() => setShowExportModal(true)}
+            onOpenRegenerate={(slideIdx) => {
+              setRegenSlideIndex(slideIdx || 0);
+              setShowRegenModal(true);
+            }}
+            onOpenMigration={() => setShowMigrationModal(true)}
+            onOpenLiveMode={() => setShowLiveModeModal(true)}
+          />
         )}
       </main>
 
@@ -147,6 +300,58 @@ export default function App() {
           error={nonCodingError}
           onClose={() => setNonCodingError(null)}
           onSelectSuggestedTopic={(topic) => setSuggestedTopic(topic)}
+          theme={theme}
+        />
+      )}
+
+      {/* Export Center Modal */}
+      {showExportModal && currentDeckId && (
+        <ExportCenterModal
+          deckId={currentDeckId}
+          onClose={() => setShowExportModal(false)}
+          theme={theme}
+        />
+      )}
+
+      {/* Single Slide Regenerator Modal */}
+      {showRegenModal && currentDeckId && deckData && (
+        <SingleSlideRegenModal
+          deckId={currentDeckId}
+          slides={deckData.slides || []}
+          initialSlideIndex={regenSlideIndex}
+          onClose={() => setShowRegenModal(false)}
+          onRegenerated={handleRegeneratedSlide}
+          theme={theme}
+        />
+      )}
+
+      {/* Version Migration Modal */}
+      {showMigrationModal && currentDeckId && deckData && (
+        <VersionMigrationModal
+          deckId={currentDeckId}
+          currentTech={deckData.tech}
+          currentVersion={deckData.tech_version}
+          onClose={() => setShowMigrationModal(false)}
+          onMigrated={handleMigratedDeck}
+          theme={theme}
+        />
+      )}
+
+      {/* Fullscreen Live Class Trainer Mode Modal */}
+      {showLiveModeModal && deckData && (
+        <LiveClassModeModal
+          deck={deckData}
+          materials={materialsData}
+          onClose={() => setShowLiveModeModal(false)}
+          theme={theme}
+        />
+      )}
+
+      {/* Studio History Modal */}
+      {showHistoryModal && (
+        <HistoryModal
+          onSelectDeck={loadDeckById}
+          onClose={() => setShowHistoryModal(false)}
           theme={theme}
         />
       )}

@@ -17,20 +17,23 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
-export default function VerificationDashboard({ deckId, theme, onClose, onRefreshDeck }) {
+export default function VerificationDashboard({
+  deckId,
+  theme,
+  onClose,
+  onRefreshDeck,
+  isApproved = false,
+  onApprove,
+}) {
   const isDark = theme === 'dark';
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
+  const [stalenessResult, setStalenessResult] = useState(null);
   const [streamProgress, setStreamProgress] = useState({ stage: 'idle', percent: 0, message: '' });
   const [selectedSnippet, setSelectedSnippet] = useState(null);
   const [activeTab, setActiveTab] = useState('snippets'); // 'snippets', 'exercises', 'content', 'qa'
-
-  useEffect(() => {
-    if (deckId) {
-      fetchReport();
-    }
-  }, [deckId]);
 
   const fetchReport = async () => {
     try {
@@ -44,6 +47,30 @@ export default function VerificationDashboard({ deckId, theme, onClose, onRefres
       console.error('Failed to fetch verification report:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (deckId) {
+      fetchReport();
+    }
+  }, [deckId]);
+
+  const handleReverifyNow = async () => {
+    setReverifying(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/decks/${deckId}/reverify`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStalenessResult(data);
+        fetchReport();
+      }
+    } catch (e) {
+      console.error('Re-verify failed:', e);
+    } finally {
+      setReverifying(false);
     }
   };
 
@@ -183,9 +210,21 @@ export default function VerificationDashboard({ deckId, theme, onClose, onRefres
           )}
 
           <button
+            onClick={handleReverifyNow}
+            disabled={reverifying}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 border transition-all ${
+              isDark ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+            }`}
+            title="Re-run saved deck against current pinned sandbox to test for staleness"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reverifying ? 'animate-spin' : ''}`} />
+            <span>{reverifying ? 'Checking...' : 'Re-verify Now (Staleness)'}</span>
+          </button>
+
+          <button
             onClick={handleStartVerification}
             disabled={verifying}
-            className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 text-white shadow-lg transition-all ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 text-white shadow-lg transition-all ${
               verifying
                 ? 'bg-blue-600/50 cursor-not-allowed'
                 : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-blue-500/20'
@@ -194,8 +233,50 @@ export default function VerificationDashboard({ deckId, theme, onClose, onRefres
             <RefreshCw className={`w-4 h-4 ${verifying ? 'animate-spin' : ''}`} />
             <span>{verifying ? 'Verifying Sandbox...' : 'Run Verification Core'}</span>
           </button>
+
+          {!isApproved && onApprove && (
+            <button
+              onClick={onApprove}
+              className="px-5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 transition-all transform hover:scale-[1.02]"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Approve Deck</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Staleness Check Banner */}
+      {stalenessResult && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between text-xs ${
+            stalenessResult.is_stale
+              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {stalenessResult.is_stale ? (
+              <AlertTriangle className="w-4 h-4 text-rose-400" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            )}
+            <span>
+              {stalenessResult.is_stale
+                ? `Staleness Detected: ${stalenessResult.broken_slide_ids?.length || 0} slide(s) broken, ${
+                    stalenessResult.deprecated_slide_ids?.length || 0
+                  } deprecated against current pinned image.`
+                : `Staleness Check Passed: All ${stalenessResult.total_checked} snippet(s) remain healthy on current image.`}
+            </span>
+          </div>
+          <button
+            onClick={() => setStalenessResult(null)}
+            className="text-[10px] text-slate-400 hover:text-white"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Realtime Verification Live Progress Banner */}
       {verifying && (

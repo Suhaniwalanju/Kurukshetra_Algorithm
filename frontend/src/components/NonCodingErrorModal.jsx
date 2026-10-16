@@ -6,11 +6,15 @@ export default function NonCodingErrorModal({ error, onClose, onSelectSuggestedT
   const isDark = theme === 'dark';
 
   const suggestions = [
-    { topic: "Java 21 Virtual Threads & Structured Concurrency", tech: "Java", version: "21" },
-    { topic: "Spring Boot 3 RESTful APIs and Microservices", tech: "Spring Boot", version: "3.2" },
     { topic: "Python 3.12 AsyncIO and Coroutines Architecture", tech: "Python", version: "3.12" },
-    { topic: "React 19 Server Components and State Management", tech: "Node", version: "20" },
-    { topic: "Data Structures: Red-Black Trees & Balancing in C++", tech: "C++", version: "20" },
+    { topic: "Java 21 Virtual Threads & Structured Concurrency", tech: "Java", version: "21" },
+    { topic: "C Memory Safety: Pointers, Allocations & Sanitizers", tech: "C", version: "17" },
+    { topic: "Modern C++20 Concepts, Ranges & Move Semantics", tech: "C++", version: "20" },
+    { topic: "PostgreSQL Advanced Indexing, Query Optimization & EXPLAIN", tech: "PostgreSQL", version: "16.6" },
+    { topic: "Node.js & Express RESTful API Design with Middleware", tech: "Node.js + Express", version: "20" },
+    { topic: "React 18 State Management, Hooks & Component Lifecycle", tech: "React", version: "18.3" },
+    { topic: "Tailwind CSS Utility-First Responsive Design", tech: "Tailwind CSS", version: "3.4" },
+    { topic: "MongoDB Document Modeling, Indexing & Aggregations", tech: "MongoDB", version: "7.0" },
   ];
 
   return (

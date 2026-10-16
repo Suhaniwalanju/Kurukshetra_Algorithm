@@ -10,7 +10,7 @@ from pygments import lex
 from pygments.lexers import get_lexer_by_name, TextLexer
 from pygments.token import Token
 
-from backend.schemas import Slide, TemplateLayoutConfig
+from backend.schemas import Slide, SlideCode, SlideDiagram, TemplateLayoutConfig
 from backend.layout_engine import ElementBox, SlideLayoutPlan
 from backend.diagram_renderer import diagram_renderer
 
@@ -296,3 +296,53 @@ class PPTXBuilder:
 
 
 pptx_builder = PPTXBuilder()
+
+
+def build_presentation(deck_dict: dict) -> str:
+    """
+    Builds the PPTX presentation file for a given deck dictionary.
+    Returns the absolute path to the generated PPTX file.
+    """
+    from backend.template_registry import template_registry
+    from backend.layout_engine import layout_engine
+
+    deck_id = deck_dict.get("id", "deck")
+    college = deck_dict.get("college", "VIT")
+    prof_name = deck_dict.get("professor_name", "Professor")
+    topic = deck_dict.get("topic", "Presentation")
+    tech = deck_dict.get("tech", "Code")
+
+    config = template_registry.get_config(college)
+    if not config and template_registry.templates:
+        config = list(template_registry.templates.values())[0]
+
+    output_dir = os.path.join(os.path.abspath("output"), deck_id)
+    os.makedirs(output_dir, exist_ok=True)
+    clean_topic = topic.replace(" ", "_").replace("/", "_")
+    pptx_path = os.path.join(output_dir, f"{clean_topic}_{tech}.pptx")
+
+    slides_data = deck_dict.get("slides", [])
+    parsed_slides = []
+    for s in slides_data:
+        s_copy = dict(s)
+        code_raw = s_copy.get("code")
+        if isinstance(code_raw, str):
+            s_copy["code"] = SlideCode(source=code_raw)
+        elif isinstance(code_raw, dict):
+            s_copy["code"] = SlideCode(**code_raw)
+
+        diag_raw = s_copy.get("diagram")
+        if isinstance(diag_raw, str):
+            s_copy["diagram"] = SlideDiagram(source=diag_raw)
+        elif isinstance(diag_raw, dict):
+            s_copy["diagram"] = SlideDiagram(**diag_raw)
+        parsed_slides.append(Slide(**s_copy))
+
+    plans = []
+    if config:
+        for idx, slide in enumerate(parsed_slides):
+            plan = layout_engine.plan_slide(slide, config, is_first_slide=(idx == 0))
+            plans.append(plan)
+
+    pptx_builder.build_deck(parsed_slides, plans, config, prof_name, pptx_path)
+    return pptx_path

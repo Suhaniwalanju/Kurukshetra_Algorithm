@@ -211,7 +211,11 @@ class LayoutEngine:
             s.id = i + 1
         return new_slides
 
-    def layout_single_slide(self, slide: Slide, config: TemplateLayoutConfig, professor_name: str) -> SlideLayoutPlan:
+    def plan_slide(self, slide: Slide, config: TemplateLayoutConfig, is_first_slide: bool = False, professor_name: str = "") -> SlideLayoutPlan:
+        """Alias for layout_single_slide to provide standard layout planning interface."""
+        return self.layout_single_slide(slide, config, professor_name)
+
+    def layout_single_slide(self, slide: Slide, config: TemplateLayoutConfig, professor_name: str = "") -> SlideLayoutPlan:
         """
         Computes exact collision-free bounding boxes for all elements of a slide.
         Enforces min 0.2 inch (MIN_GUTTER_PX) gutter and strict safe-zone bounds.
@@ -430,3 +434,52 @@ class LayoutEngine:
 
 
 layout_engine = LayoutEngine()
+
+
+def validate_deck_layout(deck_dict: dict) -> Tuple[List[str], bool]:
+    """
+    Validates layout compliance for an entire deck.
+    Returns (violations_list, is_compliant).
+    """
+    from backend.template_registry import template_registry
+    from backend.schemas import Slide, SlideCode, SlideDiagram
+
+    college = deck_dict.get("college", "VIT")
+    config = template_registry.get_config(college)
+    if not config and template_registry.templates:
+        config = list(template_registry.templates.values())[0]
+
+    slides_data = deck_dict.get("slides", [])
+    violations: List[str] = []
+
+    parsed_slides = []
+    for s in slides_data:
+        s_copy = dict(s)
+        code_raw = s_copy.get("code")
+        if isinstance(code_raw, str):
+            s_copy["code"] = SlideCode(source=code_raw)
+        elif isinstance(code_raw, dict):
+            s_copy["code"] = SlideCode(**code_raw)
+
+        diag_raw = s_copy.get("diagram")
+        if isinstance(diag_raw, str):
+            s_copy["diagram"] = SlideDiagram(source=diag_raw)
+        elif isinstance(diag_raw, dict):
+            s_copy["diagram"] = SlideDiagram(**diag_raw)
+        parsed_slides.append(Slide(**s_copy))
+
+    if config:
+        for idx, slide in enumerate(parsed_slides):
+            plan = layout_engine.plan_slide(slide, config, is_first_slide=(idx == 0))
+            for v in plan.violations:
+                violations.append(f"Slide {slide.id}: {v}")
+
+            # Bullet constraints: max 5 bullets, max 8 words per bullet
+            for b_idx, bullet in enumerate(slide.bullets):
+                words = bullet.strip().split()
+                if len(words) > 8:
+                    violations.append(f"Slide {slide.id}, Bullet {b_idx + 1}: Exceeds 8 words ({len(words)} words)")
+            if len(slide.bullets) > 5:
+                violations.append(f"Slide {slide.id}: Exceeds max 5 bullets ({len(slide.bullets)} bullets)")
+
+    return violations, (len(violations) == 0)

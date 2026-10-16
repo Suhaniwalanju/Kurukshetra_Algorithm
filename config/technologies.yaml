@@ -1,0 +1,221 @@
+# Technology and Language Runtime Configurations for Verified Course Material Studio
+# Pinned versions, Docker images, execution commands, and lint flags
+
+technologies:
+  python:
+    id: "python"
+    display_name: "Python 3.12"
+    pinned_version: "3.12.8"
+    docker_image: "studio-runtime-python:3.12"
+    file_extension: ".py"
+    main_file: "main.py"
+    setup_commands:
+      - "pip install --no-index --find-links=/wheels pytest"
+    compile_commands: []
+    run_commands:
+      - "python3 -W error::DeprecationWarning main.py"
+    test_commands:
+      - "pytest -q test_runner.py"
+    lint_flags:
+      - "-W"
+      - "error::DeprecationWarning"
+    deprecation_flags:
+      - "-W"
+      - "error::DeprecationWarning"
+    output_type: "text"
+    trusted_docs_domains:
+      - "docs.python.org"
+      - "pypi.org"
+
+  java:
+    id: "java"
+    display_name: "Java 21 (Temurin)"
+    pinned_version: "21.0.6"
+    docker_image: "studio-runtime-java:21"
+    file_extension: ".java"
+    main_file: "Main.java"
+    setup_commands: []
+    compile_commands:
+      - "javac -Xlint:deprecation,removal -encoding UTF-8 Main.java"
+    run_commands:
+      - "java -ea Main"
+    test_commands:
+      - "javac -cp .:junit-platform-console-standalone.jar -Xlint:deprecation,removal TestRunner.java && java -jar junit-platform-console-standalone.jar --class-path . --scan-class-path"
+    lint_flags:
+      - "-Xlint:deprecation,removal"
+    deprecation_flags:
+      - "-Xlint:deprecation"
+      - "-Xlint:removal"
+    output_type: "text"
+    trusted_docs_domains:
+      - "docs.oracle.com"
+      - "spring.io"
+
+  c:
+    id: "c"
+    display_name: "C (gcc, C17)"
+    pinned_version: "17 (gcc 13.2)"
+    docker_image: "studio-runtime-c:c17"
+    file_extension: ".c"
+    main_file: "main.c"
+    setup_commands: []
+    compile_commands:
+      - "gcc -std=c17 -Wall -Wextra -fsanitize=address,undefined -O1 main.c -o main"
+    run_commands:
+      - "./main"
+    test_commands:
+      - "gcc -std=c17 -Wall -Wextra -fsanitize=address,undefined -O1 test_runner.c -o test_runner && ./test_runner"
+    lint_flags:
+      - "-Wall"
+      - "-Wextra"
+    deprecation_flags:
+      - "-Wdeprecated-declarations"
+    output_type: "text"
+    trusted_docs_domains:
+      - "en.cppreference.com"
+      - "gcc.gnu.org"
+
+  cpp:
+    id: "cpp"
+    display_name: "C++20 (g++)"
+    pinned_version: "20 (g++ 13.2)"
+    docker_image: "studio-runtime-cpp:20"
+    file_extension: ".cpp"
+    main_file: "main.cpp"
+    setup_commands: []
+    compile_commands:
+      - "g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined -O1 main.cpp -o main"
+    run_commands:
+      - "./main"
+    test_commands:
+      - "g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined -O1 test_runner.cpp -o test_runner && ./test_runner"
+    lint_flags:
+      - "-Wall"
+      - "-Wextra"
+    deprecation_flags:
+      - "-Wdeprecated-declarations"
+    output_type: "text"
+    trusted_docs_domains:
+      - "en.cppreference.com"
+      - "isocpp.org"
+
+  sql:
+    id: "sql"
+    display_name: "SQL (PostgreSQL 16)"
+    pinned_version: "16.6"
+    docker_image: "studio-runtime-sql:16.6"
+    file_extension: ".sql"
+    main_file: "query.sql"
+    setup_commands:
+      - "initdb -D /tmp/pgdata"
+    compile_commands: []
+    run_commands:
+      - "psql -v ON_ERROR_STOP=1 -f query.sql"
+    test_commands:
+      - "psql -v ON_ERROR_STOP=1 -f test_runner.sql"
+    lint_flags: []
+    deprecation_flags: []
+    output_type: "table_json"
+    trusted_docs_domains:
+      - "postgresql.org"
+
+  node_express:
+    id: "node_express"
+    display_name: "Node.js 20 LTS + Express"
+    pinned_version: "20.18.0 (Express 4.21.2)"
+    docker_image: "studio-runtime-node-express:20"
+    file_extension: ".js"
+    main_file: "server.js"
+    setup_commands: []
+    compile_commands: []
+    run_commands:
+      - "node test_harness.js"
+    test_commands:
+      - "node --test test.js"
+    lint_flags: []
+    deprecation_flags:
+      - "--throw-deprecation"
+    output_type: "http_json"
+    trusted_docs_domains:
+      - "nodejs.org"
+      - "expressjs.com"
+
+  web_foundations:
+    id: "web_foundations"
+    display_name: "Web Foundations (HTML/CSS/JS)"
+    pinned_version: "HTML5 / ES2023 (Playwright 1.49.1)"
+    docker_image: "studio-runtime-web:1.49.1"
+    file_extension: ".html"
+    main_file: "index.html"
+    setup_commands: []
+    compile_commands: []
+    run_commands:
+      - "node runner.js"
+    test_commands:
+      - "node test_runner.js"
+    lint_flags: []
+    deprecation_flags: []
+    output_type: "dom_screenshot"
+    trusted_docs_domains:
+      - "developer.mozilla.org"
+      - "w3.org"
+
+  react:
+    id: "react"
+    display_name: "React 18 (Vite + RTL)"
+    pinned_version: "18.3.1 (Vite 5.4.11)"
+    docker_image: "studio-runtime-react:18.3.1"
+    file_extension: ".jsx"
+    main_file: "App.jsx"
+    setup_commands: []
+    compile_commands:
+      - "npx vite build"
+    run_commands:
+      - "node runner.js"
+    test_commands:
+      - "npx vitest run"
+    lint_flags: []
+    deprecation_flags: []
+    output_type: "dom_screenshot"
+    trusted_docs_domains:
+      - "react.dev"
+      - "vitejs.dev"
+
+  tailwind:
+    id: "tailwind"
+    display_name: "Tailwind CSS 3.4 CLI"
+    pinned_version: "3.4.17"
+    docker_image: "studio-runtime-tailwind:3.4.17"
+    file_extension: ".html"
+    main_file: "index.html"
+    setup_commands: []
+    compile_commands:
+      - "npx tailwindcss -i input.css -o output.css --minify"
+    run_commands:
+      - "node runner.js"
+    test_commands:
+      - "node test_runner.js"
+    lint_flags: []
+    deprecation_flags: []
+    output_type: "dom_screenshot"
+    trusted_docs_domains:
+      - "tailwindcss.com"
+
+  mongodb:
+    id: "mongodb"
+    display_name: "MongoDB 7.0"
+    pinned_version: "7.0.16"
+    docker_image: "studio-runtime-mongodb:7.0.16"
+    file_extension: ".js"
+    main_file: "script.js"
+    setup_commands: []
+    compile_commands: []
+    run_commands:
+      - "mongosh --quiet --file script.js"
+    test_commands:
+      - "mongosh --quiet --file test_runner.js"
+    lint_flags: []
+    deprecation_flags: []
+    output_type: "json"
+    trusted_docs_domains:
+      - "mongodb.com"

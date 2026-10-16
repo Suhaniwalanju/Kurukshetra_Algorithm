@@ -2,7 +2,9 @@ import os
 import uuid
 import json
 import asyncio
-from typing import Dict, Any, List
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -240,6 +242,13 @@ def create_deck(req: DeckCreateRequest, background_tasks: BackgroundTasks, db: S
     }
 
 
+@app.get("/api/decks")
+def list_all_decks(db: Session = Depends(get_db)):
+    """Returns all past generated decks for the History page."""
+    records = db.query(DeckRecord).order_by(DeckRecord.created_at.desc()).all()
+    return {"decks": [r.to_dict() for r in records]}
+
+
 @app.get("/api/decks/{deck_id}")
 def get_deck(deck_id: str, db: Session = Depends(get_db)):
     """Returns deck details, slide data, layout logs, and preview URLs."""
@@ -402,3 +411,289 @@ def download_pdf_report(deck_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="PDF report not found. Please verify deck first.")
 
     return FileResponse(pdf_path, media_type="application/pdf", filename=f"verification_report_{deck_id}.pdf")
+
+
+# ---------------------------------------------------------------------------
+# LANGUAGE & RUNTIME LAYER PLUGIN SYSTEM ENDPOINTS
+# ---------------------------------------------------------------------------
+
+@app.get("/api/runtimes")
+def list_runtimes():
+    """Lists all configured language/framework tracks and pinned versions."""
+    from backend.runtimes.registry import runtime_registry
+    return {"tracks": runtime_registry.list_tracks()}
+
+
+@app.get("/api/runtimes/health")
+def get_runtimes_health():
+    """Returns per-track health status and sandbox readiness."""
+    from backend.runtimes.registry import runtime_registry
+    return runtime_registry.healthcheck_all()
+
+
+class RuntimeRunRequest(BaseModel):
+    code: str
+    timeout_sec: int = 20
+    options: Optional[Dict[str, Any]] = None
+    tests: Optional[str] = None
+    seed_sql: Optional[str] = None
+    seed_js: Optional[str] = None
+    endpoint: Optional[str] = None
+    method: Optional[str] = "GET"
+
+
+@app.post("/api/runtimes/{track}/run")
+def run_in_runtime(track: str, request: RuntimeRunRequest):
+    """Executes a code snippet or test suite inside the specified language track runner."""
+    from backend.runtimes.registry import runtime_registry
+    runner = runtime_registry.get_runner(track)
+    if not runner:
+        raise HTTPException(status_code=404, detail=f"Language runtime track '{track}' not found")
+
+    opts = request.options or {}
+    if request.seed_sql:
+        opts["seed_sql"] = request.seed_sql
+    if request.seed_js:
+        opts["seed_js"] = request.seed_js
+    if request.endpoint:
+        opts["endpoint"] = request.endpoint
+    if request.method:
+        opts["method"] = request.method
+
+    res = runner.execute(request.code, timeout_sec=request.timeout_sec, options=opts)
+    return res.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# PHASE 3: SUPPORTING MATERIALS, EXPORTS, MAINTENANCE & LIVE CLASS ENDPOINTS
+# ---------------------------------------------------------------------------
+
+@app.post("/api/decks/{deck_id}/approve")
+def approve_deck(deck_id: str, db: Session = Depends(get_db)):
+    """
+    Professor approves the verified deck.
+    Only after approval can supporting materials (notes, quiz, cheat sheet) be generated.
+    """
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    record.approved = True
+    record.approved_at = datetime.utcnow()
+    db.commit()
+    return {
+        "success": True,
+        "deck_id": deck_id,
+        "approved": True,
+        "approved_at": record.approved_at.isoformat()
+    }
+
+
+@app.post("/api/decks/{deck_id}/materials/generate")
+def generate_supporting_materials(deck_id: str, db: Session = Depends(get_db)):
+    """
+    Generates Student Notes, Professor Notes, Quiz, and Cheat Sheet for an approved deck.
+    Strictly verifies that the deck has been approved by the professor first.
+    """
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    if not getattr(record, "approved", False):
+        raise HTTPException(
+            status_code=400,
+            detail="Deck must be approved by the professor before generating supporting materials."
+        )
+
+    record.materials_status = "generating"
+    db.commit()
+
+    try:
+        from backend.materials.notes_generator import generate_notes_for_deck
+        from backend.materials.quiz_generator import generate_quiz_for_deck
+        from backend.materials.cheat_sheet_generator import generate_cheat_sheet_data, render_cheat_sheet_pdf
+        from backend.materials.exporter import build_all_deck_exports
+
+        deck_dict = record.to_dict()
+        snippets = [s.to_dict() for s in record.snippets]
+
+        # 1. Notes (Student + Professor)
+        student_notes, prof_notes = generate_notes_for_deck(deck_dict, snippets)
+        record.student_notes_json = json.dumps([n.model_dump() for n in student_notes])
+        record.professor_notes_json = json.dumps([n.model_dump() for n in prof_notes])
+
+        # 2. Quiz (MCQs + Output Prediction)
+        quiz = generate_quiz_for_deck(deck_dict, snippets)
+        record.quiz_json = json.dumps([q.model_dump() for q in quiz])
+
+        # 3. Cheat Sheet (1-page A4)
+        cheat_sheet = generate_cheat_sheet_data(deck_dict, snippets)
+        record.cheat_sheet_json = json.dumps(cheat_sheet.model_dump())
+        db.commit()
+
+        # 4. Generate all exports (PDFs, ZIPs)
+        exports = build_all_deck_exports(deck_id, db)
+
+        record.materials_status = "ready"
+        db.commit()
+
+        return {
+            "success": True,
+            "deck_id": deck_id,
+            "materials_status": "ready",
+            "student_notes_count": len(student_notes),
+            "quiz_questions_count": len(quiz),
+            "exports": exports
+        }
+    except Exception as e:
+        record.materials_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Materials generation failed: {str(e)}")
+
+
+@app.get("/api/decks/{deck_id}/materials")
+def get_supporting_materials(deck_id: str, db: Session = Depends(get_db)):
+    """Returns generated notes, quiz, cheat sheet, and export status."""
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    deck_dict = record.to_dict()
+    return {
+        "deck_id": deck_id,
+        "approved": deck_dict.get("approved", False),
+        "materials_status": deck_dict.get("materials_status", "not_generated"),
+        "student_notes": deck_dict.get("student_notes", []),
+        "professor_notes": deck_dict.get("professor_notes", []),
+        "quiz": deck_dict.get("quiz", []),
+        "cheat_sheet": deck_dict.get("cheat_sheet", {}),
+        "exports": deck_dict.get("exports", {})
+    }
+
+
+@app.get("/api/decks/{deck_id}/exports/{export_type}")
+def download_export(deck_id: str, export_type: str, db: Session = Depends(get_db)):
+    """Downloads an individual export artifact or the All_Materials.zip package."""
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    exports = json.loads(record.exports_json) if record.exports_json else {}
+    target_key = export_type.lower()
+    if target_key in ["all", "zip", "all_zip"]:
+        target_key = "all_zip"
+    elif target_key in ["quiz_key", "quiz-key", "answer-key", "quiz_answer_key"]:
+        target_key = "quiz_answer_key"
+    elif target_key in ["cheatsheet", "cheat-sheet", "cheat_sheet"]:
+        target_key = "cheat_sheet"
+    elif target_key in ["notes", "student-notes", "student_notes"]:
+        target_key = "student_notes"
+    elif target_key in ["report", "verification_report"]:
+        target_key = "verification_report"
+
+    file_path = exports.get(target_key)
+    if not file_path or not os.path.exists(file_path):
+        if record.materials_status == "ready":
+            from backend.materials.exporter import build_all_deck_exports
+            exports = build_all_deck_exports(deck_id, db)
+            file_path = exports.get(target_key)
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Export '{export_type}' not available yet.")
+
+    media_type = "application/zip" if file_path.endswith(".zip") else (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" if file_path.endswith(".pptx") else "application/pdf"
+    )
+    return FileResponse(file_path, media_type=media_type, filename=os.path.basename(file_path))
+
+
+class SlideRegenerateRequest(BaseModel):
+    instruction: Optional[str] = ""
+
+
+@app.post("/api/decks/{deck_id}/slides/{slide_index}/regenerate")
+def api_regenerate_slide(deck_id: str, slide_index: int, req: SlideRegenerateRequest, db: Session = Depends(get_db)):
+    """Regenerates a single slide, re-verifies it, and leaves all other slides untouched."""
+    from backend.materials.slide_regenerator import regenerate_single_slide
+    try:
+        res = regenerate_single_slide(deck_id, slide_index, req.instruction or "", db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class MigrationRequest(BaseModel):
+    new_version: str
+
+
+@app.post("/api/decks/{deck_id}/migrate")
+def api_migrate_version(deck_id: str, req: MigrationRequest, db: Session = Depends(get_db)):
+    """Migrates deck to a new target version and reports diff table."""
+    from backend.materials.version_migrator import migrate_deck_version
+    try:
+        res = migrate_deck_version(deck_id, req.new_version, db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/decks/{deck_id}/reverify")
+def api_reverify_staleness(deck_id: str, db: Session = Depends(get_db)):
+    """Staleness check: re-runs all snippets against the current pinned runtime."""
+    from backend.materials.staleness_checker import check_deck_staleness
+    try:
+        res = check_deck_staleness(deck_id, db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class LiveRunRequest(BaseModel):
+    slide_id: int
+    code: Optional[str] = None
+
+
+@app.post("/api/decks/{deck_id}/live/run")
+def api_live_class_run(deck_id: str, req: LiveRunRequest, db: Session = Depends(get_db)):
+    """Executes code live during class or falls back to pre-captured verified output."""
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    tech = record.tech or "Programming"
+    from backend.runtimes.registry import runtime_registry
+    runner = runtime_registry.get_runner(tech.lower())
+
+    target_code = req.code
+    fallback_output = ""
+    for snip in record.snippets:
+        if snip.slide_id == req.slide_id:
+            if not target_code:
+                target_code = snip.source_code
+            fallback_output = snip.actual_output
+            break
+
+    if not target_code:
+        return {"status": "pass", "stdout": fallback_output or "Executed cleanly.", "is_fallback": True}
+
+    if runner:
+        try:
+            res = runner.execute(target_code, timeout=10)
+            return {
+                "status": res.status,
+                "stdout": res.stdout,
+                "stderr": res.stderr,
+                "exit_code": res.exit_code,
+                "duration_ms": res.duration_ms,
+                "is_fallback": False
+            }
+        except Exception as e:
+            return {
+                "status": "fallback",
+                "stdout": fallback_output or f"Fallback output: {str(e)}",
+                "is_fallback": True
+            }
+
+    return {"status": "pass", "stdout": fallback_output or "Executed cleanly.", "is_fallback": True}
+
+

@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: studio-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=studiopass
+      - POSTGRES_DB=course_studio
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - studio-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: studio-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=sqlite:///studio.db
+    volumes:
+      - ./input:/workspace/input
+      - ./output:/workspace/output
+      - ./backend:/workspace/backend
+      - ./config:/workspace/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - studio-net
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/runtimes/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: studio-worker
+    restart: unless-stopped
+    command: ["python", "-m", "backend.worker"]
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DATABASE_URL=sqlite:///studio.db
+    volumes:
+      - ./input:/workspace/input
+      - ./output:/workspace/output
+      - ./backend:/workspace/backend
+      - ./config:/workspace/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - studio-net
+    depends_on:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: studio-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - studio-net
+
+networks:
+  studio-net:
+    driver: bridge
+  internal_sandbox_net:
+    internal: true
+
+volumes:
+  postgres_data:

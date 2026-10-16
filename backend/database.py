@@ -19,8 +19,8 @@ class DeckRecord(Base):
     college = Column(String(128), nullable=False)
     professor_name = Column(String(128), nullable=False)
     topic = Column(String(256), nullable=False)
-    student_level = Column(String(32), nullable=False)
-    session_length = Column(Integer, nullable=False)
+    student_level = Column(String(32), default="Beginner", nullable=False)
+    session_length = Column(Integer, default=30, nullable=False)
     tech = Column(String(128), nullable=False)
     tech_version = Column(String(64), default="")
     status = Column(String(32), default="pending")  # pending, generating, building, completed, failed
@@ -31,6 +31,15 @@ class DeckRecord(Base):
     pdf_path = Column(String(512), default="")
     output_dir = Column(String(512), default="")
     verified = Column(Boolean, default=False)
+    approved = Column(Boolean, default=False)
+    approved_at = Column(DateTime, nullable=True)
+    materials_status = Column(String(32), default="not_generated")  # not_generated, generating, ready, failed
+    student_notes_json = Column(Text, default="[]")
+    professor_notes_json = Column(Text, default="[]")
+    quiz_json = Column(Text, default="[]")
+    cheat_sheet_json = Column(Text, default="{}")
+    exports_json = Column(Text, default="{}")
+    migration_history_json = Column(Text, default="[]")
     preview_paths_json = Column(Text, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -58,6 +67,15 @@ class DeckRecord(Base):
             "pdf_path": getattr(self, "pdf_path", "") or "",
             "output_dir": getattr(self, "output_dir", "") or "",
             "verified": getattr(self, "verified", False) or False,
+            "approved": getattr(self, "approved", False) or False,
+            "approved_at": self.approved_at.isoformat() if getattr(self, "approved_at", None) else None,
+            "materials_status": getattr(self, "materials_status", "not_generated") or "not_generated",
+            "student_notes": json.loads(self.student_notes_json) if getattr(self, "student_notes_json", None) else [],
+            "professor_notes": json.loads(self.professor_notes_json) if getattr(self, "professor_notes_json", None) else [],
+            "quiz": json.loads(self.quiz_json) if getattr(self, "quiz_json", None) else [],
+            "cheat_sheet": json.loads(self.cheat_sheet_json) if getattr(self, "cheat_sheet_json", None) else {},
+            "exports": json.loads(self.exports_json) if getattr(self, "exports_json", None) else {},
+            "migration_history": json.loads(self.migration_history_json) if getattr(self, "migration_history_json", None) else [],
             "preview_paths": json.loads(self.preview_paths_json) if self.preview_paths_json else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -300,7 +318,21 @@ def init_db():
     # Ensure newly added columns exist in decks table for existing SQLite database
     from sqlalchemy import text
     with engine.connect() as conn:
-        for col, col_type in [("pdf_path", "VARCHAR(512)"), ("output_dir", "VARCHAR(512)"), ("verified", "BOOLEAN DEFAULT 0")]:
+        cols = [
+            ("pdf_path", "VARCHAR(512)"),
+            ("output_dir", "VARCHAR(512)"),
+            ("verified", "BOOLEAN DEFAULT 0"),
+            ("approved", "BOOLEAN DEFAULT 0"),
+            ("approved_at", "DATETIME"),
+            ("materials_status", "VARCHAR(32) DEFAULT 'not_generated'"),
+            ("student_notes_json", "TEXT DEFAULT '[]'"),
+            ("professor_notes_json", "TEXT DEFAULT '[]'"),
+            ("quiz_json", "TEXT DEFAULT '[]'"),
+            ("cheat_sheet_json", "TEXT DEFAULT '{}'"),
+            ("exports_json", "TEXT DEFAULT '{}'"),
+            ("migration_history_json", "TEXT DEFAULT '[]'"),
+        ]
+        for col, col_type in cols:
             try:
                 conn.execute(text(f"ALTER TABLE decks ADD COLUMN {col} {col_type}"))
                 conn.commit()

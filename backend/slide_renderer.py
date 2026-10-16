@@ -303,3 +303,106 @@ class SlideRenderer:
 
 
 slide_renderer = SlideRenderer()
+
+
+def render_deck_previews(deck_dict: dict) -> List[str]:
+    """
+    Renders high-res previews for all slides in the deck dictionary.
+    Returns list of preview URLs (/static/output/{deck_id}/previews/slide_{id}.png).
+    """
+    from backend.template_registry import template_registry
+    from backend.layout_engine import layout_engine
+    from backend.schemas import Slide, SlideCode, SlideDiagram
+
+    deck_id = deck_dict.get("id", "temp_deck")
+    college = deck_dict.get("college", "VIT")
+    prof_name = deck_dict.get("professor_name", "Professor")
+    topic = deck_dict.get("topic", "Presentation")
+    tech = deck_dict.get("tech", "Code")
+
+    config = template_registry.get_config(college)
+    if not config and template_registry.templates:
+        config = list(template_registry.templates.values())[0]
+
+    output_dir = os.path.join(os.path.abspath("output"), deck_id)
+    previews_dir = os.path.join(output_dir, "previews")
+    os.makedirs(previews_dir, exist_ok=True)
+    clean_topic = topic.replace(" ", "_").replace("/", "_")
+    pptx_path = os.path.join(output_dir, f"{clean_topic}_{tech}.pptx")
+
+    slides_data = deck_dict.get("slides", [])
+    parsed_slides = []
+    for s in slides_data:
+        s_copy = dict(s)
+        code_raw = s_copy.get("code")
+        if isinstance(code_raw, str):
+            s_copy["code"] = SlideCode(source=code_raw)
+        elif isinstance(code_raw, dict):
+            s_copy["code"] = SlideCode(**code_raw)
+
+        diag_raw = s_copy.get("diagram")
+        if isinstance(diag_raw, str):
+            s_copy["diagram"] = SlideDiagram(source=diag_raw)
+        elif isinstance(diag_raw, dict):
+            s_copy["diagram"] = SlideDiagram(**diag_raw)
+        parsed_slides.append(Slide(**s_copy))
+
+    plans = []
+    if config:
+        for idx, slide in enumerate(parsed_slides):
+            plan = layout_engine.plan_slide(slide, config, is_first_slide=(idx == 0))
+            plans.append(plan)
+
+    img_paths = slide_renderer.render_deck_previews(
+        pptx_path, parsed_slides, plans, config, prof_name, previews_dir
+    )
+    return [f"/static/output/{deck_id}/previews/{os.path.basename(p)}" for p in img_paths]
+
+
+def render_slide_preview(deck_dict: dict, slide_index: int) -> str:
+    """
+    Renders high-res preview for a single slide in the deck dictionary.
+    Returns preview URL (/static/output/{deck_id}/previews/slide_{id}.png).
+    """
+    from backend.template_registry import template_registry
+    from backend.layout_engine import layout_engine
+    from backend.schemas import Slide, SlideCode, SlideDiagram
+
+    deck_id = deck_dict.get("id", "temp_deck")
+    college = deck_dict.get("college", "VIT")
+    prof_name = deck_dict.get("professor_name", "Professor")
+
+    config = template_registry.get_config(college)
+    if not config and template_registry.templates:
+        config = list(template_registry.templates.values())[0]
+
+    output_dir = os.path.join(os.path.abspath("output"), deck_id)
+    previews_dir = os.path.join(output_dir, "previews")
+    os.makedirs(previews_dir, exist_ok=True)
+
+    slides_data = deck_dict.get("slides", [])
+    if not (0 <= slide_index < len(slides_data)):
+        return ""
+
+    s_raw = slides_data[slide_index]
+    s_copy = dict(s_raw)
+    code_raw = s_copy.get("code")
+    if isinstance(code_raw, str):
+        s_copy["code"] = SlideCode(source=code_raw)
+    elif isinstance(code_raw, dict):
+        s_copy["code"] = SlideCode(**code_raw)
+
+    diag_raw = s_copy.get("diagram")
+    if isinstance(diag_raw, str):
+        s_copy["diagram"] = SlideDiagram(source=diag_raw)
+    elif isinstance(diag_raw, dict):
+        s_copy["diagram"] = SlideDiagram(**diag_raw)
+    slide = Slide(**s_copy)
+
+    plan = layout_engine.plan_slide(slide, config, is_first_slide=(slide_index == 0)) if config else None
+    img_path = os.path.join(previews_dir, f"slide_{slide.id}.png")
+
+    if config and plan:
+        slide_renderer._render_single_slide_pil(slide, plan, config, prof_name, img_path)
+
+    return f"/static/output/{deck_id}/previews/slide_{slide.id}.png"
