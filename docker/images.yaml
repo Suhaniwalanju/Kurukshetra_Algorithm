@@ -1,0 +1,46 @@
+version: "1.0"
+images:
+  java21:
+    image: "eclipse-temurin:21-jdk-alpine"
+    compiler: "javac"
+    compile_args: ["-Xlint:deprecation,removal"]
+    runner: "java"
+    timeout_sec: 20
+    memory_limit: "512m"
+    cpu_limit: "1.0"
+    dockerfile: "docker/Dockerfile.java21"
+    description: "Java 21 Temurin JDK with Maven and pre-cached JUnit 5"
+
+  spring-boot-3:
+    image: "studio-spring-boot-3:latest"
+    compiler: "javac"
+    compile_args: ["-Xlint:deprecation,removal"]
+    runner: "java"
+    timeout_sec: 25
+    memory_limit: "768m"
+    cpu_limit: "1.5"
+    dockerfile: "docker/Dockerfile.springboot3"
+    description: "Java 21 Temurin with pre-cached Spring Boot 3.2.x starters and test slice dependencies"
+
+  python312:
+    image: "python:3.12-slim"
+    compiler: null
+    compile_args: []
+    runner: "python3"
+    runner_args: ["-W", "error::DeprecationWarning"]
+    timeout_sec: 15
+    memory_limit: "384m"
+    cpu_limit: "1.0"
+    dockerfile: "docker/Dockerfile.python312"
+    description: "Python 3.12 slim with pytest and standard dev libraries"
+
+  node20:
+    image: "node:20-slim"
+    compiler: null
+    compile_args: []
+    runner: "node"
+    timeout_sec: 15
+    memory_limit: "384m"
+    cpu_limit: "1.0"
+    dockerfile: "docker/Dockerfile.node20"
+    description: "Node.js 20 LTS slim"

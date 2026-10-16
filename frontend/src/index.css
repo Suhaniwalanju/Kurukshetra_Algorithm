@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background-color: #080C14;
+  color: #F3F4F6;
+  color-scheme: dark;
+}
+
+body {
+  background-color: #F8FAFC;
+  color: #0F172A;
+  color-scheme: light;
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Outfit', sans-serif;
+}
+
+code, pre, .font-mono {
+  font-family: 'Fira Code', Consolas, Monaco, monospace;
+}
+
+/* Custom sleek scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #1F2937;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}

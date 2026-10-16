@@ -1,0 +1,16 @@
+FROM eclipse-temurin:21-jdk-alpine
+
+RUN apk add --no-cache curl bash maven
+
+# Create non-root user
+RUN addgroup -S studio && adduser -S studio -G studio
+
+# Pre-cache JUnit 5 Jupiter and common dependencies
+WORKDIR /opt/studio/cache
+RUN curl -sSL https://repo1.maven.org/maven2/org/junit/jupiter/junit-jupiter-api/5.10.2/junit-jupiter-api-5.10.2.jar -o junit-jupiter-api-5.10.2.jar && \
+    curl -sSL https://repo1.maven.org/maven2/org/junit/platform/junit-platform-commons/1.10.2/junit-platform-commons-1.10.2.jar -o junit-platform-commons-1.10.2.jar && \
+    curl -sSL https://repo1.maven.org/maven2/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar -o opentest4j-1.3.0.jar
+
+WORKDIR /app
+USER studio
+ENTRYPOINT ["java"]

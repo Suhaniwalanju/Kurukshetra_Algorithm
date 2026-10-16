@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+
+RUN useradd -m -s /bin/bash studio
+
+WORKDIR /app
+RUN pip install --no-cache-dir pytest requests
+
+USER studio
+ENTRYPOINT ["python3"]

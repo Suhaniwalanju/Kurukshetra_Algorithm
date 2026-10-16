@@ -1,0 +1,56 @@
+{
+  "college": "VIT",
+  "slide_width": 1920,
+  "slide_height": 1080,
+  "aspect_ratio": "16:9",
+  "template_image_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\backend\\template_configs\\VIT_background.png",
+  "title_zone": {
+    "left": 312,
+    "top": 164,
+    "width": 1296,
+    "height": 100
+  },
+  "content_zone": {
+    "left": 312,
+    "top": 289,
+    "width": 1296,
+    "height": 650
+  },
+  "code_zone": {
+    "left": 312,
+    "top": 289,
+    "width": 628,
+    "height": 650
+  },
+  "diagram_zone": {
+    "left": 980,
+    "top": 289,
+    "width": 628,
+    "height": 650
+  },
+  "footer_zone": {
+    "left": 312,
+    "top": 944,
+    "width": 1296,
+    "height": 45
+  },
+  "presented_by_zone": {
+    "left": 352,
+    "top": 859,
+    "width": 1216,
+    "height": 80
+  },
+  "colors": {
+    "primary": "#6E9AD6",
+    "secondary": "#425C80",
+    "text": "#0F172A",
+    "background": "#FFFFFF",
+    "code_bg": "#1E1E2E",
+    "code_text": "#F8F8F2"
+  },
+  "fonts": {
+    "title": "Arial",
+    "body": "Segoe UI",
+    "code": "Consolas"
+  }
+}
