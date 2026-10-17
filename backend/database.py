@@ -40,6 +40,7 @@ class DeckRecord(Base):
     cheat_sheet_json = Column(Text, default="{}")
     exports_json = Column(Text, default="{}")
     migration_history_json = Column(Text, default="[]")
+    generation_progress_json = Column(Text, default="{}")
     preview_paths_json = Column(Text, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -76,6 +77,8 @@ class DeckRecord(Base):
             "cheat_sheet": json.loads(self.cheat_sheet_json) if getattr(self, "cheat_sheet_json", None) else {},
             "exports": json.loads(self.exports_json) if getattr(self, "exports_json", None) else {},
             "migration_history": json.loads(self.migration_history_json) if getattr(self, "migration_history_json", None) else [],
+            "generation_progress": json.loads(self.generation_progress_json) if getattr(self, "generation_progress_json", None) else {},
+            "exercises": [e.to_dict() for e in self.exercise_proofs] if getattr(self, "exercise_proofs", None) else [],
             "preview_paths": json.loads(self.preview_paths_json) if self.preview_paths_json else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -255,19 +258,43 @@ class ExerciseProofRecord(Base):
     status = Column(String(32), default="verified")  # verified, needs_review
     attempts = Column(Integer, default=1)
     exercise_ref = Column(String(64), default="")
+    title = Column(String(128), default="")
     problem_statement = Column(Text, default="")
+    estimated_minutes = Column(Integer, default=15)
+    source_slides_json = Column(Text, default="[]")
     starter_code = Column(Text, default="")
     test_code = Column(Text, default="")
     reference_solution = Column(Text, default="")
     reference_passed = Column(Boolean, default=False)
     naive_solution = Column(Text, default="")
     naive_failed = Column(Boolean, default=False)
+    failing_test_name = Column(String(128), default="")
     mutants_json = Column(Text, default="[]")
     mutation_score = Column(Float, default=0.0)
     matrix_json = Column(Text, default="{}")
+    commands_run_json = Column(Text, default="[]")
+    runs_json = Column(Text, default="[]")
+    model_used = Column(String(64), default="qwen2.5:3b")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     deck = relationship("DeckRecord", back_populates="exercise_proofs")
+
+    @property
+    def source_slides(self):
+        if not getattr(self, "source_slides_json", None):
+            return [self.slide_id] if getattr(self, "slide_id", None) else []
+        try:
+            return json.loads(self.source_slides_json)
+        except Exception:
+            return [self.slide_id] if getattr(self, "slide_id", None) else []
+
+    @property
+    def commands_run(self):
+        return json.loads(self.commands_run_json) if getattr(self, "commands_run_json", None) else []
+
+    @property
+    def runs(self):
+        return json.loads(self.runs_json) if getattr(self, "runs_json", None) else []
 
     @property
     def mutants(self):
@@ -290,23 +317,30 @@ class ExerciseProofRecord(Base):
             "id": self.id,
             "deck_id": self.deck_id,
             "slide_id": self.slide_id,
-            "difficulty": getattr(self, "difficulty", "medium") or "medium",
-            "status": getattr(self, "status", "verified") or "verified",
-            "attempts": getattr(self, "attempts", 1) or 1,
-            "exercise_ref": self.exercise_ref,
+            "title": getattr(self, "title", "") or (self.exercise_ref or f"Exercise {self.slide_id}"),
             "task": self.problem_statement,
             "problem_statement": self.problem_statement,
+            "difficulty": getattr(self, "difficulty", "medium") or "medium",
+            "estimated_minutes": getattr(self, "estimated_minutes", 15) or 15,
+            "source_slides": self.source_slides,
             "starter_code": self.starter_code,
             "test_code": self.test_code,
             "reference_solution": self.reference_solution,
             "reference_passed": self.reference_passed,
             "naive_solution": self.naive_solution,
             "naive_failed": self.naive_failed,
+            "failing_test_name": getattr(self, "failing_test_name", "") or "",
             "mutants": self.mutants,
             "total_mutants": self.total_mutants,
             "killed_mutants": self.killed_mutants,
             "mutation_score": self.mutation_score,
             "matrix": self.pass_fail_matrix,
+            "commands_run": self.commands_run,
+            "runs": self.runs,
+            "attempts": getattr(self, "attempts", 1) or 1,
+            "model_used": getattr(self, "model_used", "qwen2.5:3b") or "qwen2.5:3b",
+            "status": getattr(self, "status", "verified") or "verified",
+            "final_status": getattr(self, "status", "verified") or "verified",
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -356,6 +390,7 @@ def init_db():
             ("cheat_sheet_json", "TEXT DEFAULT '{}'"),
             ("exports_json", "TEXT DEFAULT '{}'"),
             ("migration_history_json", "TEXT DEFAULT '[]'"),
+            ("generation_progress_json", "TEXT DEFAULT '{}'"),
         ]
         for col, col_type in cols:
             try:
@@ -392,9 +427,16 @@ def init_db():
                 pass
 
         exercise_cols = [
+            ("title", "VARCHAR(128) DEFAULT ''"),
             ("difficulty", "VARCHAR(32) DEFAULT 'medium'"),
+            ("estimated_minutes", "INTEGER DEFAULT 15"),
+            ("source_slides_json", "TEXT DEFAULT '[]'"),
+            ("failing_test_name", "VARCHAR(128) DEFAULT ''"),
             ("status", "VARCHAR(32) DEFAULT 'verified'"),
             ("attempts", "INTEGER DEFAULT 1"),
+            ("model_used", "VARCHAR(64) DEFAULT 'qwen2.5:3b'"),
+            ("commands_run_json", "TEXT DEFAULT '[]'"),
+            ("runs_json", "TEXT DEFAULT '[]'"),
         ]
         for col, col_type in exercise_cols:
             try:

@@ -544,7 +544,62 @@ class VerificationReportGenerator:
                 html_content += """
                             </tr>
                         </tbody>
-                    </table>
+                    </table>"""
+
+                # Render Runs, Commands, and Failing Test Names
+                runs_list = getattr(ep, "runs", []) or []
+                commands_list = getattr(ep, "commands_run", []) or []
+                if runs_list:
+                    html_content += """
+                    <div style="margin-top: 14px;">
+                        <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 6px;">Sandbox Execution Runs & Classifications:</div>
+                        <table style="background: var(--bg-secondary); border-radius: 8px; overflow: hidden; font-size: 12px; margin-bottom: 8px;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 150px;">Step</th>
+                                    <th style="width: 140px;">Classification</th>
+                                    <th style="width: 200px;">Failing Test Name</th>
+                                    <th>Command Run</th>
+                                </tr>
+                            </thead>
+                            <tbody>"""
+                    for r in runs_list:
+                        step_name = html.escape(str(r.get("step", "-")))
+                        cls_name = html.escape(str(r.get("classification", "-")))
+                        failing_name = html.escape(str(r.get("failing_test_name") or "-"))
+                        cmd_val = html.escape(str(r.get("command") or "-"))
+
+                        if cls_name == "PASS":
+                            cls_badge = '<span class="badge badge-verified">PASS</span>'
+                        elif cls_name == "TEST_FAILURE":
+                            cls_badge = '<span class="badge badge-failed">TEST_FAILURE</span>'
+                        elif cls_name in ["COMPILE_ERROR", "RUNTIME_ERROR"]:
+                            cls_badge = f'<span class="badge badge-failed">{cls_name}</span>'
+                        elif cls_name == "TIMEOUT":
+                            cls_badge = '<span class="badge badge-review">TIMEOUT</span>'
+                        else:
+                            cls_badge = f'<span class="badge">{cls_name}</span>'
+
+                        html_content += f"""
+                                <tr>
+                                    <td><strong>{step_name}</strong></td>
+                                    <td>{cls_badge}</td>
+                                    <td><code>{failing_name}</code></td>
+                                    <td><div class="cmd-box" style="margin: 0; padding: 4px 8px; font-size: 11px;">$ {cmd_val}</div></td>
+                                </tr>"""
+                    html_content += """
+                            </tbody>
+                        </table>
+                    </div>"""
+                elif commands_list:
+                    html_content += """
+                    <div style="margin-top: 10px;">
+                        <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">Commands Executed:</div>"""
+                    for cmd_item in commands_list:
+                        html_content += f'<div class="cmd-box" style="margin-bottom: 4px; font-size: 11px;">$ {html.escape(cmd_item)}</div>'
+                    html_content += """</div>"""
+
+                html_content += """
                 </div>"""
         else:
             html_content += '<div style="color: var(--text-muted); font-size: 14px;">No hands-on exercise proofs present in this deck.</div>'
@@ -816,21 +871,23 @@ class VerificationReportGenerator:
         # 4. Exercise Proof & Mutation Table
         if exercise_proofs:
             elements.append(Paragraph("2. Exercise Proof & Mutation Score Matrix", h2_style))
-            ex_data = [["Tier", "Exercise Ref", "Status", "Reference Sol", "Naive Sol", "Mutants Killed", "Score"]]
+            ex_data = [["Tier", "Exercise Ref", "Final Status", "Attempts", "Ref Sol", "Naive Sol", "Mutants Killed", "Score"]]
             for ep in exercise_proofs:
                 diff = (getattr(ep, "difficulty", "medium") or "medium").upper()
                 ep_status = (getattr(ep, "status", "verified") or "verified").upper()
                 ep_score = ep.mutation_score if ep.mutation_score > 1.0 else (ep.mutation_score * 100)
+                attempts_val = str(getattr(ep, "attempts", 1) or 1)
                 ex_data.append([
                     diff,
                     ep.exercise_ref or f"Slide {ep.slide_id}",
                     ep_status,
+                    attempts_val,
                     "PASSED" if ep.reference_passed else "FAILED",
                     "FAILED (Good)" if ep.naive_failed else "PASSED (Strengthen)",
                     f"{ep.killed_mutants}/{ep.total_mutants}",
                     f"{ep_score:.1f}%",
                 ])
-            ex_table = Table(ex_data, colWidths=[55, 95, 75, 80, 80, 85, 70])
+            ex_table = Table(ex_data, colWidths=[50, 80, 75, 55, 70, 70, 75, 65])
             ex_table.setStyle(
                 TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
@@ -843,7 +900,26 @@ class VerificationReportGenerator:
                 ])
             )
             elements.append(ex_table)
-            elements.append(Spacer(1, 14))
+            elements.append(Spacer(1, 10))
+
+            # Detailed runs & classifications per exercise
+            for ep in exercise_proofs:
+                runs_list = getattr(ep, "runs", []) or []
+                if runs_list:
+                    diff = (getattr(ep, "difficulty", "medium") or "medium").upper()
+                    elements.append(Paragraph(f"<b>{ep.exercise_ref} ({diff}) - Sandbox Execution Runs:</b>", body_style))
+                    for r in runs_list:
+                        step_name = r.get("step", "-")
+                        cls_name = r.get("classification", "-")
+                        failing_info = f" | Failing Test: <b>{r.get('failing_test_name')}</b>" if r.get("failing_test_name") else ""
+                        cmd_info = f"<br/>&nbsp;&nbsp;Command: <font color='#3b82f6'>{html.escape(r.get('command', ''))}</font>" if r.get("command") else ""
+                        cls_color = "#10b981" if cls_name == "PASS" else ("#f59e0b" if cls_name == "TEST_FAILURE" else "#ef4444")
+                        elements.append(Paragraph(
+                            f"• <b>{step_name}</b>: <font color='{cls_color}'><b>{cls_name}</b></font>{failing_info}{cmd_info}",
+                            code_style
+                        ))
+                    elements.append(Spacer(1, 6))
+            elements.append(Spacer(1, 8))
 
         # 5. Template Compliance QA
         elements.append(Paragraph("3. Template Compliance QA", h2_style))

@@ -380,6 +380,15 @@ def verify_and_heal_concept_example(
     executed_source = full_code
     was_healed = False
 
+    snippet.actual_output = exec_result.stdout or ""
+    snippet.stderr = exec_result.stderr or ""
+    snippet.compiler_output = exec_result.compiler_output or ""
+    snippet.exit_code = exec_result.exit_code
+    snippet.duration_ms = exec_result.duration_ms
+    snippet.command_executed = exec_result.command_executed or f"{lang} {snippet.source_location}"
+    snippet.sandbox_backend = exec_result.sandbox_backend or "docker"
+    snippet.real_runtime_version = exec_result.real_runtime_version or ""
+
     # Check for execution failure or deprecation warning
     has_failed = (
         exec_result.exit_code != 0

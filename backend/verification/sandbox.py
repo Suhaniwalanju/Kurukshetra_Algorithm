@@ -39,8 +39,13 @@ class ExecutionResult:
     is_non_deterministic: bool = False
     non_deterministic_details: str = ""
 
+    @property
+    def status(self) -> str:
+        return "pass" if (self.exit_code == 0 and not self.timed_out) else "fail"
+
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "status": self.status,
             "snippet_id": self.snippet_id,
             "language": self.language,
             "version": self.version,

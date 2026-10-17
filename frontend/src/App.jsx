@@ -24,6 +24,7 @@ export default function App() {
   const [materialsData, setMaterialsData] = useState(null);
   const [nonCodingError, setNonCodingError] = useState(null);
   const [suggestedTopic, setSuggestedTopic] = useState(null);
+  const [generationProgress, setGenerationProgress] = useState(null);
   const [activeStep, setActiveStep] = useState(1);
 
   // Modals
@@ -121,6 +122,9 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           setStatusMessage(data.status_message || 'Processing...');
+          if (data.generation_progress) {
+            setGenerationProgress(data.generation_progress);
+          }
 
           if (data.status === 'completed') {
             clearInterval(interval);
@@ -147,10 +151,10 @@ export default function App() {
         setDeckData(data);
         setCurrentDeckId(deckId);
         if (data.materials_status === 'ready') {
-          setActiveStep(6);
+          setActiveStep(5);
           fetchMaterials(deckId);
         } else if (data.approved) {
-          setActiveStep(5);
+          setActiveStep(4);
         } else {
           setActiveStep(3);
         }
@@ -185,7 +189,7 @@ export default function App() {
           approved: true,
           approved_at: updated.approved_at,
         }));
-        setActiveStep(6);
+        setActiveStep(5);
       } else {
         const err = await res.json();
         alert(`Approval error: ${err.detail || 'Could not approve deck'}`);
@@ -252,7 +256,7 @@ export default function App() {
           currentStep={activeStep}
           onSelectStep={(step) => {
             setActiveStep(step);
-            if (step === 7) setShowExportModal(true);
+            if (step === 6) setShowExportModal(true);
           }}
           theme={theme}
           deckState={deckState}
@@ -272,7 +276,11 @@ export default function App() {
 
         {/* Realtime Generation Progress */}
         {isGenerating && (
-          <GenerationProgress statusMessage={statusMessage} theme={theme} />
+          <GenerationProgress
+            statusMessage={statusMessage}
+            progress={generationProgress}
+            theme={theme}
+          />
         )}
 
         {/* Verified Slide Deck Gallery + Supporting Materials */}

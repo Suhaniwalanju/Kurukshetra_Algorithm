@@ -16,19 +16,17 @@ export default function Stepper({ currentStep, onSelectStep, theme, deckState = 
     { id: 1, label: 'Inputs', icon: FileText, desc: 'Topic & Tech' },
     { id: 2, label: 'Template', icon: Layout, desc: 'Branded Zone' },
     { id: 3, label: 'Deck Preview', icon: Presentation, desc: 'Minimal Slides' },
-    { id: 4, label: 'Verification', icon: ShieldCheck, desc: 'Sandbox QA' },
-    { id: 5, label: 'Approval', icon: CheckCircle, desc: 'Professor Signoff' },
-    { id: 6, label: 'Materials', icon: BookOpen, desc: 'Notes, Quiz, Sheet' },
-    { id: 7, label: 'Export', icon: Download, desc: 'PDF / PPTX / ZIP' },
+    { id: 4, label: 'Approval', icon: CheckCircle, desc: 'Professor Signoff' },
+    { id: 5, label: 'Materials', icon: BookOpen, desc: 'Notes, Quiz, Sheet' },
+    { id: 6, label: 'Export', icon: Download, desc: 'PDF / PPTX / ZIP' },
   ];
 
   const isStepAccessible = (stepId) => {
     if (stepId <= 1) return true;
     if (stepId <= 3 && deckState?.hasDeck) return true;
     if (stepId === 4 && deckState?.hasDeck) return true;
-    if (stepId === 5 && deckState?.verified) return true;
-    if (stepId === 6 && deckState?.approved) return true;
-    if (stepId === 7 && deckState?.materialsReady) return true;
+    if (stepId === 5 && deckState?.approved) return true;
+    if (stepId === 6 && deckState?.materialsReady) return true;
     return false;
   };
 

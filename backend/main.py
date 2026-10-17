@@ -1,3 +1,4 @@
+from backend.schemas import Slide
 import os
 import uuid
 import json
@@ -117,37 +118,133 @@ def update_template_config(college: str, config_data: Dict[str, Any]):
 
 
 def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Session):
-    """Core pipeline executing generation, layout, pptx build, and automated checks."""
+    """Core pipeline executing inline slide drafting & concurrent verification/healing."""
     record = db_session.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
     if not record:
         return
 
     try:
-        record.status = "generating"
-        record.status_message = "Generating structured coding curriculum using Ollama LLM..."
-        db_session.commit()
-
         # 1. Fetch template config
         config = template_registry.get_config(req.college)
         if not config:
-            # Fallback to first available college
             colleges = template_registry.list_colleges()
             if colleges:
                 config = template_registry.get_config(colleges[0]["college"])
             else:
                 raise ValueError("No templates registered in /input/templates/")
 
-        # 2. Generate Slides with Ollama LLM
-        deck_schema = llm_generator.generate_deck(req, max_retries=3)
+        specs = llm_generator.plan_slide_specs(req)
+        total_slides = len(specs)
 
-        # 2b. Generate Notes Step after slide generation
-        record.status = "generating_notes"
-        record.status_message = "Generating per-slide trainer notes, examples, and timing allocations..."
+        record.status = "generating"
+        record.status_message = f"Drafting slide 1 of {total_slides}..."
+        record.generation_progress_json = json.dumps({
+            "current_slide": 1,
+            "total_slides": total_slides,
+            "stage": "drafting",
+            "detail": f"Drafting slide 1 of {total_slides}...",
+            "verified_count": 0,
+            "auto_healed_count": 0,
+            "needs_review_count": 0,
+        })
         db_session.commit()
 
+        # 2. Concurrent slide drafting & verification pipeline (bounded worker pool)
+        # Verify slide N in worker pool while drafting slide N+1
+        final_slides_dicts: List[Dict[str, Any]] = []
+        all_snippets: List[SnippetRecord] = []
+        all_healing_logs: List[HealingLogRecord] = []
+
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(max_workers=2)
+        pending_future = None
+
+        def update_progress(current_s: int, stage_str: str, detail_str: str):
+            with SessionLocal() as s:
+                rec = s.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+                if rec:
+                    v_cnt = s.query(SnippetRecord).filter(
+                        SnippetRecord.deck_id == deck_id,
+                        SnippetRecord.status.in_(["verified", "auto_healed", "verified_low_assurance"])
+                    ).count()
+                    h_cnt = s.query(SnippetRecord).filter(
+                        SnippetRecord.deck_id == deck_id,
+                        SnippetRecord.status == "auto_healed"
+                    ).count()
+                    nr_cnt = s.query(SnippetRecord).filter(
+                        SnippetRecord.deck_id == deck_id,
+                        SnippetRecord.status == "needs_review"
+                    ).count()
+                    rec.status_message = detail_str
+                    rec.generation_progress_json = json.dumps({
+                        "current_slide": current_s,
+                        "total_slides": total_slides,
+                        "stage": stage_str,
+                        "detail": detail_str,
+                        "verified_count": v_cnt,
+                        "auto_healed_count": h_cnt,
+                        "needs_review_count": nr_cnt,
+                    })
+                    s.commit()
+
+        def _worker_verify_slide(slide_dict: Dict[str, Any]):
+            with SessionLocal() as worker_session:
+                return verification_coordinator.verify_slide_inline(
+                    slide=slide_dict,
+                    deck_id=deck_id,
+                    tech=req.tech,
+                    version=req.tech_version or "",
+                    template_config=config,
+                    professor_name=req.professor_name,
+                    db_session=worker_session,
+                    on_progress=lambda stg, dtl: update_progress(slide_dict.get("id", 1), stg, dtl),
+                )
+
+        # Iterate over planned slide specifications
+        for i, spec in enumerate(specs):
+            slide_idx = i + 1
+            # Update live drafting status
+            update_progress(slide_idx, "drafting", f"Drafting slide {slide_idx} of {total_slides}: {spec['title']}...")
+
+            # Draft slide N
+            current_draft_slide = llm_generator.draft_single_slide(
+                req=req,
+                slide_id=spec["id"],
+                slide_type=spec["type"],
+                title=spec["title"],
+                slide_index=slide_idx,
+                total_slides=total_slides,
+            )
+            current_slide_dict = current_draft_slide.model_dump()
+
+            # If previous slide verification was in progress, wait for it before finalizing
+            if pending_future is not None:
+                finalized_prev, snips, logs = pending_future.result()
+                final_slides_dicts.append(finalized_prev)
+                all_snippets.extend(snips)
+                all_healing_logs.extend(logs)
+                pending_future = None
+
+            # Submit current slide N verification to worker pool
+            pending_future = pool.submit(_worker_verify_slide, current_slide_dict)
+
+        # Wait for the last slide verification to complete
+        if pending_future is not None:
+            finalized_last, snips, logs = pending_future.result()
+            final_slides_dicts.append(finalized_last)
+            all_snippets.extend(snips)
+            all_healing_logs.extend(logs)
+            pending_future = None
+
+        pool.shutdown(wait=True)
+
+        final_slides = [Slide(**s) for s in final_slides_dicts]
+
+        # 3. Generate Notes with Inline Code Verification & Healing
+        update_progress(total_slides, "generating_notes", "Generating per-slide trainer notes and verifying examples inline...")
         from backend.materials.notes_generator import generate_notes_for_deck_slides
-        deck_schema.slides = generate_notes_for_deck_slides(
-            slides=deck_schema.slides,
+        final_slides = generate_notes_for_deck_slides(
+            slides=final_slides,
             topic=req.topic,
             tech=req.tech,
             tech_version=req.tech_version or "",
@@ -156,66 +253,106 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
             deck_id=deck_id,
             db_session=db_session,
         )
+        final_slides_dicts = [s.model_dump() for s in final_slides]
+        final_slides_dicts, notes_snips, notes_hlogs = verification_coordinator.verify_notes_code_inline(
+            slides=final_slides_dicts,
+            deck_id=deck_id,
+            tech=req.tech,
+            version=req.tech_version or "",
+            template_config=config,
+            professor_name=req.professor_name,
+            db_session=db_session,
+        )
+        final_slides = [Slide(**s) for s in final_slides_dicts]
+        all_snippets.extend(notes_snips)
+        all_healing_logs.extend(notes_hlogs)
 
-        # 3. Collision-free Layout Engine with PIL text measurement & auto-splitting
-        record.status = "layout"
-        record.status_message = "Executing collision-free layout engine and safe-zone solver..."
-        db_session.commit()
+        # 4. Generate & Prove Hands-On Exercises Inline (reference, naive, mutation testing)
+        update_progress(total_slides, "proving_exercise", "Proving hands-on exercises (reference, naive, mutation testing)...")
+        from backend.verification.exercise_prover import exercise_prover
+        topic_chunks = getattr(req, "topic_chunks", None) or []
+        do_not_use = getattr(req, "do_not_use", []) or []
 
-        final_slides, plans, layout_logs = layout_engine.layout_deck(
-            deck_schema.slides, config, req.professor_name, max_attempts=3
+        proven_exercises = exercise_prover.prove_deck_exercises(
+            deck_id=deck_id,
+            topic=req.topic,
+            language=req.tech,
+            version=req.tech_version or "",
+            slides=final_slides_dicts,
+            topic_chunks=topic_chunks,
+            student_level=req.student_level,
+            do_not_use=do_not_use,
+            max_attempts=3,
+            db_session=db_session,
         )
 
-        # 4. Build PPTX
-        record.status = "building"
-        record.status_message = "Building PowerPoint presentation with Pygments syntax highlighting..."
-        db_session.commit()
+        # 5. Collision-free Layout Engine with PIL text measurement & auto-splitting
+        update_progress(total_slides, "layout", "Executing collision-free layout engine and safe-zone solver...")
+        final_slides, plans, layout_logs = layout_engine.layout_deck(
+            final_slides, config, req.professor_name, max_attempts=3
+        )
+        final_slides_dicts = [s.model_dump() for s in final_slides]
 
+        # 6. Build PPTX
+        update_progress(total_slides, "building", "Building PowerPoint presentation with Pygments syntax highlighting...")
         deck_dir = os.path.join(OUTPUT_DIR, deck_id)
         os.makedirs(deck_dir, exist_ok=True)
         record.output_dir = deck_dir
         clean_topic = sanitize_filename(req.topic)
         clean_tech = sanitize_filename(req.tech)
         pptx_path = os.path.join(deck_dir, f"{clean_topic}_{clean_tech}.pptx")
-
         pptx_builder.build_deck(final_slides, plans, config, req.professor_name, pptx_path)
 
-        # 5. Render high-res 1920x1080 slide previews
-        record.status = "rendering"
-        record.status_message = "Rendering high-res slide previews and executing automated verification..."
-        db_session.commit()
-
+        # 7. Render high-res 1920x1080 slide previews
+        update_progress(total_slides, "rendering", "Rendering high-res slide previews and executing template compliance QA...")
         previews_dir = os.path.join(deck_dir, "previews")
         preview_files = slide_renderer.render_deck_previews(
             pptx_path, final_slides, plans, config, req.professor_name, previews_dir
         )
-
-        # 6. Automated Validation Check
-        passed, check_issues = slide_renderer.run_automated_check(final_slides, plans)
-        if not passed:
-            layout_logs.extend([f"Automated check warning: {issue}" for issue in check_issues])
-
-        # 7. Stub Verifier for Phase 2 readiness
-        verification_report = code_verifier.verify_deck(deck_schema)
-
-        # 8. Save completion state
         preview_urls = [
             f"/static/output/{deck_id}/previews/{os.path.basename(p)}" for p in preview_files
         ]
 
+        # 8. Visual Template Compliance QA & Generate Downloadable Verification Reports (HTML & PDF)
+        update_progress(total_slides, "generating_reports", "Generating downloadable HTML and PDF verification reports...")
+        report_meta = verification_coordinator.generate_final_verification_reports(
+            deck_id=deck_id,
+            slides_data=final_slides_dicts,
+            template_config=config,
+            professor_name=req.professor_name,
+            output_dir=deck_dir,
+            pptx_path=pptx_path,
+            db_session=db_session,
+        )
+
+        # 9. Save completion state
         record.status = "completed"
         record.status_message = "Slide deck built and verified successfully!"
-        record.slides_json = json.dumps([s.model_dump() for s in final_slides])
-        notes_list = [s.notes for s in final_slides if getattr(s, "notes", None)]
+        record.slides_json = json.dumps(final_slides_dicts)
+        notes_list = [
+            s.notes if isinstance(s.notes, dict) else (s.notes.model_dump() if hasattr(s.notes, "model_dump") else s.notes)
+            for s in final_slides if getattr(s, "notes", None)
+        ]
         if notes_list:
             record.professor_notes_json = json.dumps(notes_list)
         record.layout_logs_json = json.dumps(layout_logs)
         record.pptx_path = pptx_path
         record.preview_paths_json = json.dumps(preview_urls)
+        record.verified = True
+        record.generation_progress_json = json.dumps({
+            "current_slide": total_slides,
+            "total_slides": total_slides,
+            "stage": "completed",
+            "detail": "Slide deck built and verified successfully!",
+            "verified_count": report_meta.get("verified_count", 0),
+            "auto_healed_count": report_meta.get("auto_healed_count", 0),
+            "needs_review_count": report_meta.get("needs_review_count", 0),
+        })
         db_session.commit()
 
     except Exception as e:
-        print(f"Error generating deck {deck_id}: {e}")
+        import traceback
+        print(f"Error generating deck {deck_id}: {e}\n{traceback.format_exc()}")
         record.status = "failed"
         record.status_message = f"Generation error: {str(e)}"
         db_session.commit()
@@ -296,6 +433,47 @@ def download_deck(deck_id: str, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/api/decks/{deck_id}/exercises")
+def get_deck_exercises(deck_id: str, db: Session = Depends(get_db)):
+    """Returns proven exercises for a given deck."""
+    records = db.query(ExerciseProofRecord).filter(ExerciseProofRecord.deck_id == deck_id).all()
+    return {"exercises": [r.to_dict() for r in records]}
+
+
+@app.post("/api/decks/{deck_id}/exercises/{exercise_id}/regenerate")
+def regenerate_deck_exercise(deck_id: str, exercise_id: str, db: Session = Depends(get_db)):
+    """Regenerates and re-proves a single exercise without touching PPT or other exercises."""
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    ex_record = db.query(ExerciseProofRecord).filter(
+        ExerciseProofRecord.deck_id == deck_id,
+        (ExerciseProofRecord.id == exercise_id) | (ExerciseProofRecord.exercise_ref == exercise_id)
+    ).first()
+    if not ex_record:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    from backend.verification.exercise_prover import exercise_prover
+    slides_data = json.loads(record.slides_json) if record.slides_json else []
+
+    updated_proof = exercise_prover.prove_single_exercise(
+        deck_id=deck_id,
+        slide_id=ex_record.slide_id,
+        exercise_ref=ex_record.exercise_ref,
+        topic=record.topic,
+        difficulty=ex_record.difficulty,
+        language=record.tech,
+        version=record.tech_version or "",
+        slides=slides_data,
+        source_slides=ex_record.source_slides,
+        student_level=record.student_level,
+        max_attempts=3,
+        db_session=db,
+    )
+    return updated_proof.to_dict()
+
+
 # -------------------------------------------------------------
 # PHASE 2: VERIFICATION CORE ENDPOINTS
 # -------------------------------------------------------------
@@ -306,61 +484,6 @@ def docker_health():
     sandbox_engine.prewarm()
     health_data = sandbox_engine.get_health()
     return health_data
-
-
-@app.post("/api/decks/{deck_id}/verify")
-def start_deck_verification(deck_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Triggers Phase 2 Verification pipeline for all code snippets and slides in a deck."""
-    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Deck not found")
-
-    def run_verify_background(d_id: str):
-        with SessionLocal() as session:
-            try:
-                verification_coordinator.verify_deck(d_id, session)
-            except Exception as e:
-                import traceback
-                print(f"Error in verification: {e}\n{traceback.format_exc()}")
-                verification_coordinator._publish_event(d_id, "error", f"Verification failed: {str(e)}", 100)
-
-    background_tasks.add_task(run_verify_background, deck_id)
-    return {
-        "status": "started",
-        "deck_id": deck_id,
-        "message": "Verification pipeline started in background.",
-    }
-
-
-@app.get("/api/decks/{deck_id}/verify/stream")
-async def verify_progress_stream(deck_id: str):
-    """Live Server-Sent Events (SSE) stream for real-time verification progress."""
-    async def event_generator():
-        last_index = 0
-        heartbeats = 0
-        while heartbeats < 600:  # max 5 mins
-            events = verification_coordinator.get_progress_events(deck_id)
-            if last_index < len(events):
-                while last_index < len(events):
-                    ev = events[last_index]
-                    last_index += 1
-                    yield f"data: {json.dumps(ev)}\n\n"
-                    if ev.get("stage") == "completed" or ev.get("stage") == "error":
-                        return
-            else:
-                heartbeats += 1
-                yield f": ping\n\n"
-            await asyncio.sleep(0.5)
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @app.get("/api/decks/{deck_id}/report")
@@ -666,12 +789,16 @@ def api_migrate_version(deck_id: str, req: MigrationRequest, db: Session = Depen
 
 @app.post("/api/decks/{deck_id}/reverify")
 def api_reverify_staleness(deck_id: str, db: Session = Depends(get_db)):
-    """Staleness check: re-runs all snippets against the current pinned runtime."""
-    from backend.materials.staleness_checker import check_deck_staleness
+    """Re-runs only stale or changed snippets, heals if broken, and regenerates verification report."""
+    record = db.query(DeckRecord).filter(DeckRecord.id == deck_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Deck not found")
     try:
-        res = check_deck_staleness(deck_id, db)
+        res = verification_coordinator.reverify_stale_or_changed_snippets(deck_id, db)
         return res
     except Exception as e:
+        import traceback
+        print(f"Error in reverify: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

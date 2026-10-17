@@ -181,6 +181,7 @@ class SelfHealingLoop:
         professor_name: str,
         db_session: Optional[Session] = None,
         max_attempts: int = 4,
+        on_attempt: Optional[Any] = None,
     ) -> Tuple[bool, str, List[HealingLogRecord]]:
         """
         Executes self-healing loop for failed snippets:
@@ -202,6 +203,11 @@ class SelfHealingLoop:
 
         for attempt in range(1, max_attempts + 1):
             snippet.attempts_count = attempt + 1
+            if on_attempt:
+                try:
+                    on_attempt(attempt, max_attempts)
+                except Exception:
+                    pass
 
             # Select model: Ollama for attempts 1-2; Gemini adapter after 2 failed attempts (attempts 3+)
             if attempt <= 2:

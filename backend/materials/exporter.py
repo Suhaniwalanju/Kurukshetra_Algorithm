@@ -251,40 +251,129 @@ def export_verification_report_pdf(deck: Dict[str, Any], run: Dict[str, Any], ou
     return output_pdf_path
 
 
+def get_language_extension(tech: str) -> str:
+    t = (tech or "").lower()
+    if "python" in t or t == "py":
+        return ".py"
+    elif "java" in t:
+        return ".java"
+    elif "c++" in t or "cpp" in t:
+        return ".cpp"
+    elif t == "c":
+        return ".c"
+    elif "script" in t or "node" in t or "js" in t or "react" in t:
+        return ".js"
+    elif "ts" in t or "typescript" in t:
+        return ".ts"
+    elif "sql" in t:
+        return ".sql"
+    elif "html" in t or "web" in t:
+        return ".html"
+    return ".py"
+
+
+def get_run_instructions(tech: str, version: str, starter_file: str, test_file: str) -> str:
+    t = (tech or "").lower()
+    ver = version or ("3.12" if "python" in t else ("21" if "java" in t else ("20" if "c++" in t else "17")))
+    if "python" in t:
+        return f"```bash\n# Pinned Python {ver}\npython3 {test_file}\n```"
+    elif "java" in t:
+        return f"```bash\n# Pinned Java {ver}\njavac {starter_file} {test_file} && java TestRunner\n```"
+    elif "c++" in t or "cpp" in t:
+        return f"```bash\n# Pinned C++ {ver}\ng++ -std=c++20 -O2 {starter_file} {test_file} -o test_runner && ./test_runner\n```"
+    elif t == "c":
+        return f"```bash\n# Pinned C {ver}\ngcc -std=c17 -O2 {starter_file} {test_file} -o test_runner && ./test_runner\n```"
+    elif "script" in t or "node" in t or "js" in t:
+        return f"```bash\n# Pinned Node.js {ver}\nnode {test_file}\n```"
+    return f"```bash\npython3 {test_file}\n```"
+
+
 def export_exercises_zip(deck: Dict[str, Any], proofs: list, output_zip_path: str) -> str:
-    """Creates Exercises.zip packaging starter code, tests, and separate instructor reference solutions."""
+    """
+    Creates Exercises.zip packaging:
+    exercises/
+      README.md                         (list of exercises, difficulty, source slides, status)
+      student/
+        exercise_01/ task.md, starter.<ext>, tests.<ext>
+        ...
+      instructor/
+        exercise_01/ reference_solution.<ext>, naive_solution.<ext>, proof_report.md
+        ...
+      exercises_verification.json       (the stored per-exercise results)
+    - student/ must not contain any solutions. All solutions live only in instructor/.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(output_zip_path)), exist_ok=True)
-    tech = deck.get("tech", "code")
+    tech = deck.get("tech", "python")
+    version = deck.get("tech_version", "")
+    ext = get_language_extension(tech)
+
+    # Prepare README markdown
+    readme_content = f"# Hands-On Exercises: {deck.get('topic')}\n\n"
+    readme_content += f"**Technology:** {tech} (Version: {version})\n\n"
+    readme_content += "## Exercise Index\n\n"
+    readme_content += "| # | Title | Difficulty | Source Slides | Status | Est. Time |\n"
+    readme_content += "|---|---|---|---|---|---|\n"
 
     with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
-        # 1. Student Folder
-        z.writestr("student/README.md", f"# Student Exercises: {deck.get('topic')}\n\nComplete the starter code and run tests to verify.\n")
-        
-        # 2. Instructor Folder
-        z.writestr("instructor/README.md", f"# Instructor Reference Solutions: {deck.get('topic')}\n\nConfidential solutions and mutation test matrices.\n")
-
         for idx, proof in enumerate(proofs):
             p = proof if isinstance(proof, dict) else proof.to_dict()
-            diff = p.get("difficulty", "medium")
-            ex_folder = f"exercise_{idx + 1}_{diff}"
-            starter = p.get("starter_code", "# Starter code\n")
-            tests = p.get("test_code", "# Tests\n")
-            ref = p.get("reference_solution", "# Reference solution\n")
-            naive = p.get("naive_solution", "# Naive solution\n")
-            task = p.get("task") or p.get("problem_statement", f"Exercise {idx + 1}")
-            status = p.get("status", "verified")
+            diff = (p.get("difficulty") or "medium").lower()
+            ex_folder = f"exercise_{idx + 1:02d}"
+            title = p.get("title") or f"Exercise {idx + 1}"
+            task = p.get("task") or p.get("problem_statement") or f"Exercise {idx + 1}"
+            est_mins = p.get("estimated_minutes") or (10 if diff == "easy" else (35 if diff == "stretch" else 20))
+            source_slides = p.get("source_slides") or [p.get("slide_id", idx + 1)]
+            status = p.get("status") or p.get("final_status") or "verified"
+            starter = p.get("starter_code", "")
+            tests = p.get("test_code", "")
+            ref = p.get("reference_solution", "")
+            naive = p.get("naive_solution", "")
+            failing_test = p.get("failing_test_name") or "AssertionError"
+            mut_score = p.get("mutation_score", 0.0)
+            mut_score_disp = f"{mut_score:.1f}%" if mut_score > 1.0 else f"{int(mut_score * 100)}%"
+            attempts = p.get("attempts", 1)
+            model_used = p.get("model_used", "qwen2.5:3b")
 
-            # Student files
-            z.writestr(f"student/{ex_folder}/README.md", f"# Exercise {idx + 1} ({diff.upper()}): {deck.get('topic')}\n\n## Task\n{task}\n\nComplete the starter code and run the test file to verify.\n")
-            z.writestr(f"student/{ex_folder}/solution_starter.py", starter)
-            z.writestr(f"student/{ex_folder}/test_exercise.py", tests)
+            readme_content += f"| {idx + 1:02d} | {title} | {diff.upper()} | Slides {source_slides} | {status.upper()} | {est_mins} mins |\n"
 
-            # Instructor files
-            z.writestr(f"instructor/{ex_folder}/README.md", f"# Exercise {idx + 1} ({diff.upper()}): {deck.get('topic')}\n\n## Task\n{task}\n\n## Verification Status: {status}\n")
-            z.writestr(f"instructor/{ex_folder}/reference_solution.py", ref)
-            z.writestr(f"instructor/{ex_folder}/naive_solution.py", naive)
-            z.writestr(f"instructor/{ex_folder}/test_exercise.py", tests)
-            z.writestr(f"instructor/{ex_folder}/mutation_proof.json", json.dumps(p.get("mutants", []), indent=2))
+            # 1. Student Folder: task.md, starter.<ext>, tests.<ext> ONLY. No solutions!
+            task_md = f"# {title} ({diff.upper()})\n\n"
+            task_md += f"**Difficulty:** {diff.upper()} | **Estimated Time:** {est_mins} minutes | **Source Slides:** Slides {source_slides}\n\n"
+            task_md += f"## Task Description\n{task}\n\n"
+            task_md += f"## How to Run Tests\nRun the test suite using the pinned runtime:\n"
+            task_md += get_run_instructions(tech, version, f"starter{ext}", f"tests{ext}") + "\n"
+
+            z.writestr(f"student/{ex_folder}/task.md", task_md)
+            z.writestr(f"student/{ex_folder}/starter{ext}", starter)
+            z.writestr(f"student/{ex_folder}/tests{ext}", tests)
+
+            # 2. Instructor Folder: reference_solution.<ext>, naive_solution.<ext>, proof_report.md
+            proof_md = f"# Exercise Proof & Verification Report: {title}\n\n"
+            proof_md += f"- **Difficulty:** {diff.upper()}\n"
+            proof_md += f"- **Estimated Time:** {est_mins} minutes\n"
+            proof_md += f"- **Source Slides:** Slides {source_slides}\n"
+            proof_md += f"- **Final Verification Status:** {status.upper()}\n"
+            proof_md += f"- **Model Used:** {model_used}\n"
+            proof_md += f"- **Verification Attempts:** {attempts}\n\n"
+            proof_md += "## 1. Reference Solution Run\n"
+            proof_md += "- **Required Result:** All unit tests pass.\n"
+            proof_md += f"- **Actual Status:** {'PASS ✔' if p.get('reference_passed') else 'FAIL ✖'}\n\n"
+            proof_md += "## 2. Naive Solution Run (Student Mistake Detection)\n"
+            proof_md += "- **Required Result:** At least one test assertion fails (TEST_FAILURE). Compile errors / crashes do not count.\n"
+            proof_md += f"- **Actual Status:** {'TEST_FAILURE ✔ (Good: test suite catches student mistake)' if p.get('naive_failed') else 'FAIL (Test suite was too weak)'}\n"
+            proof_md += f"- **Failing Test Name:** `{failing_test}`\n\n"
+            proof_md += "## 3. Mutation Testing Check\n"
+            proof_md += f"- **Mutation Score:** {mut_score_disp} ({p.get('killed_mutants', 0)}/{p.get('total_mutants', 0)} valid mutants killed)\n"
+            proof_md += "- **Requirement:** Tests must fail on at least 80% of valid compiling mutants.\n"
+
+            z.writestr(f"instructor/{ex_folder}/reference_solution{ext}", ref)
+            z.writestr(f"instructor/{ex_folder}/naive_solution{ext}", naive)
+            z.writestr(f"instructor/{ex_folder}/proof_report.md", proof_md)
+
+        # Write README.md and exercises_verification.json
+        z.writestr("README.md", readme_content)
+        verif_data = [p if isinstance(p, dict) else p.to_dict() for p in proofs]
+        z.writestr("exercises_verification.json", json.dumps(verif_data, indent=2))
 
     return output_zip_path
 
@@ -300,7 +389,7 @@ def build_all_deck_exports(deck_id: str, db_session) -> Dict[str, str]:
     - CheatSheet.pdf (Strictly 1 page)
     - Exercises.zip
     - Verification_Report.pdf
-    - All_Materials.zip
+    - All_Materials.zip (includes all files PLUS exercises/ folder hierarchy)
     """
     from backend.database import DeckRecord, VerificationRunRecord, ExerciseProofRecord
 
@@ -362,10 +451,82 @@ def build_all_deck_exports(deck_id: str, db_session) -> Dict[str, str]:
     # 8. All_Materials.zip
     all_zip_path = os.path.join(output_dir, f"All_Materials_{deck_id}.zip")
     with zipfile.ZipFile(all_zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+        # Write standalone export files
         for name, file_path in exports.items():
             if os.path.exists(file_path):
                 arcname = os.path.basename(file_path)
                 z.write(file_path, arcname=arcname)
+
+        # Write exercises/ directory tree inside All_Materials.zip
+        ext = get_language_extension(deck_dict.get("tech", "python"))
+        version = deck_dict.get("tech_version", "")
+        tech = deck_dict.get("tech", "python")
+
+        readme_content = f"# Hands-On Exercises: {deck_dict.get('topic')}\n\n"
+        readme_content += f"**Technology:** {tech} (Version: {version})\n\n"
+        readme_content += "## Exercise Index\n\n"
+        readme_content += "| # | Title | Difficulty | Source Slides | Status | Est. Time |\n"
+        readme_content += "|---|---|---|---|---|---|\n"
+
+        for idx, proof in enumerate(proofs):
+            p = proof if isinstance(proof, dict) else proof.to_dict()
+            diff = (p.get("difficulty") or "medium").lower()
+            ex_folder = f"exercise_{idx + 1:02d}"
+            title = p.get("title") or f"Exercise {idx + 1}"
+            task = p.get("task") or p.get("problem_statement") or f"Exercise {idx + 1}"
+            est_mins = p.get("estimated_minutes") or (10 if diff == "easy" else (35 if diff == "stretch" else 20))
+            source_slides = p.get("source_slides") or [p.get("slide_id", idx + 1)]
+            status = p.get("status") or p.get("final_status") or "verified"
+            starter = p.get("starter_code", "")
+            tests = p.get("test_code", "")
+            ref = p.get("reference_solution", "")
+            naive = p.get("naive_solution", "")
+            failing_test = p.get("failing_test_name") or "AssertionError"
+            mut_score = p.get("mutation_score", 0.0)
+            mut_score_disp = f"{mut_score:.1f}%" if mut_score > 1.0 else f"{int(mut_score * 100)}%"
+            attempts = p.get("attempts", 1)
+            model_used = p.get("model_used", "qwen2.5:3b")
+
+            readme_content += f"| {idx + 1:02d} | {title} | {diff.upper()} | Slides {source_slides} | {status.upper()} | {est_mins} mins |\n"
+
+            # Student files (NO solutions)
+            task_md = f"# {title} ({diff.upper()})\n\n"
+            task_md += f"**Difficulty:** {diff.upper()} | **Estimated Time:** {est_mins} minutes | **Source Slides:** Slides {source_slides}\n\n"
+            task_md += f"## Task Description\n{task}\n\n"
+            task_md += f"## How to Run Tests\nRun the test suite using the pinned runtime:\n"
+            task_md += get_run_instructions(tech, version, f"starter{ext}", f"tests{ext}") + "\n"
+
+            z.writestr(f"exercises/student/{ex_folder}/task.md", task_md)
+            z.writestr(f"exercises/student/{ex_folder}/starter{ext}", starter)
+            z.writestr(f"exercises/student/{ex_folder}/tests{ext}", tests)
+
+            # Instructor files (solutions + proof report)
+            proof_md = f"# Exercise Proof & Verification Report: {title}\n\n"
+            proof_md += f"- **Difficulty:** {diff.upper()}\n"
+            proof_md += f"- **Estimated Time:** {est_mins} minutes\n"
+            proof_md += f"- **Source Slides:** Slides {source_slides}\n"
+            proof_md += f"- **Final Verification Status:** {status.upper()}\n"
+            proof_md += f"- **Model Used:** {model_used}\n"
+            proof_md += f"- **Verification Attempts:** {attempts}\n\n"
+            proof_md += "## 1. Reference Solution Run\n"
+            proof_md += "- **Required Result:** All unit tests pass.\n"
+            proof_md += f"- **Actual Status:** {'PASS ✔' if p.get('reference_passed') else 'FAIL ✖'}\n\n"
+            proof_md += "## 2. Naive Solution Run (Student Mistake Detection)\n"
+            proof_md += "- **Required Result:** At least one test assertion fails (TEST_FAILURE). Compile errors / crashes do not count.\n"
+            proof_md += f"- **Actual Status:** {'TEST_FAILURE ✔ (Good: test suite catches student mistake)' if p.get('naive_failed') else 'FAIL (Test suite was too weak)'}\n"
+            proof_md += f"- **Failing Test Name:** `{failing_test}`\n\n"
+            proof_md += "## 3. Mutation Testing Check\n"
+            proof_md += f"- **Mutation Score:** {mut_score_disp} ({p.get('killed_mutants', 0)}/{p.get('total_mutants', 0)} valid mutants killed)\n"
+            proof_md += "- **Requirement:** Tests must fail on at least 80% of valid compiling mutants.\n"
+
+            z.writestr(f"exercises/instructor/{ex_folder}/reference_solution{ext}", ref)
+            z.writestr(f"exercises/instructor/{ex_folder}/naive_solution{ext}", naive)
+            z.writestr(f"exercises/instructor/{ex_folder}/proof_report.md", proof_md)
+
+        z.writestr("exercises/README.md", readme_content)
+        verif_data = [p if isinstance(p, dict) else p.to_dict() for p in proofs]
+        z.writestr("exercises/exercises_verification.json", json.dumps(verif_data, indent=2))
+
     exports["all_zip"] = all_zip_path
 
     # Save exports in DB

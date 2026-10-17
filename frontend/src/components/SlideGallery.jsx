@@ -12,8 +12,9 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react';
-import VerificationDashboard from './VerificationDashboard';
+import VerificationReportPanel from './VerificationReportPanel';
 import SupportingMaterialsView from './SupportingMaterialsView';
+import ExercisesSection from './ExercisesSection';
 
 export default function SlideGallery({
   deck,
@@ -29,7 +30,6 @@ export default function SlideGallery({
   const isDark = theme === 'dark';
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
   const [fullscreenImage, setFullscreenImage] = useState(null);
-  const [showVerification, setShowVerification] = useState(true);
 
   // Keyboard navigation (Left / Right arrow keys)
   useEffect(() => {
@@ -111,18 +111,6 @@ export default function SlideGallery({
             </button>
           )}
 
-          <button
-            onClick={() => setShowVerification(!showVerification)}
-            className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center space-x-1.5 border transition-all ${
-              isDark
-                ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
-                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>{showVerification ? 'Hide QA' : 'Verification QA'}</span>
-          </button>
-
           {onOpenExport ? (
             <button
               onClick={onOpenExport}
@@ -143,16 +131,13 @@ export default function SlideGallery({
         </div>
       </div>
 
-      {/* Phase 2: Verification Core Dashboard */}
-      {showVerification && (
-        <VerificationDashboard
-          deckId={deck.id}
-          theme={theme}
-          isApproved={isApproved}
-          onApprove={onApprove}
-          onRefreshDeck={() => window.location.reload()}
-        />
-      )}
+      {/* Collapsible Verification Report Panel */}
+      <VerificationReportPanel
+        deckId={deck.id}
+        theme={theme}
+        isApproved={isApproved}
+        onApprove={onApprove}
+      />
 
       {/* Main Slide Stage + Metadata Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -397,6 +382,9 @@ export default function SlideGallery({
           })}
         </div>
       </div>
+
+      {/* Hands-On Coding Exercises Section (Easy, Medium, Stretch) */}
+      <ExercisesSection deck={deck} theme={theme} />
 
       {/* Phase 3: Supporting Materials View (Student Notes, Professor Notes, Quiz, Cheat Sheet) */}
       <SupportingMaterialsView
