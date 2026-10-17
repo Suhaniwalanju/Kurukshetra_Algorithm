@@ -29,13 +29,16 @@ class JavaRunner(LanguageRunner):
 
     def prepare(self, snippet: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
         cleaned = snippet.strip()
-        class_match = re.search(r'public\s+class\s+([A-Za-z0-9_]+)', cleaned)
+        pub_match = re.search(r'public\s+class\s+([A-Za-z0-9_]+)', cleaned)
+        main_class_match = re.search(r'class\s+([A-Za-z0-9_]+)[^{]*\{[^}]*public\s+static\s+void\s+main', cleaned, re.DOTALL)
+        class_match = pub_match or main_class_match or re.search(r'class\s+([A-Za-z0-9_]+)', cleaned)
 
         if class_match:
             class_name = class_match.group(1)
-            wrapped = f"{COMMON_IMPORTS}\n{cleaned}"
-            return {f"{class_name}.java": wrapped}
+            # Remove silent auto-imports: verify code exactly as shown on the slide
+            return {f"{class_name}.java": cleaned}
         else:
+            # Fragment needs wrapper
             wrapped = (
                 f"{COMMON_IMPORTS}\n"
                 f"public class Main {{\n"
@@ -51,9 +54,11 @@ class JavaRunner(LanguageRunner):
         main_file = list(files.keys())[0]
         class_name = os.path.splitext(main_file)[0]
         command = f"javac -Xlint:deprecation,removal {main_file} && java -ea {class_name}"
+        is_fragment = (main_file == "Main.java" and not bool(re.search(r'\bclass\s+([A-Za-z0-9_]+)', snippet.strip())))
 
         if self.is_docker_available():
             res = self.run_in_docker(files, command, timeout_sec=timeout_sec, network="none")
+            res.was_wrapped = is_fragment
             self._analyze_java_deprecations(res)
             return res
 
@@ -86,6 +91,7 @@ class JavaRunner(LanguageRunner):
                         exit_code=comp_proc.returncode,
                         duration_ms=duration_ms,
                         command=command,
+                        was_wrapped=is_fragment,
                     )
 
             except subprocess.TimeoutExpired:
@@ -97,6 +103,7 @@ class JavaRunner(LanguageRunner):
                     exit_code=124,
                     duration_ms=duration_ms,
                     command=command,
+                    was_wrapped=is_fragment,
                 )
             except Exception as e:
                 duration_ms = (time.time() - start_time) * 1000
@@ -107,6 +114,7 @@ class JavaRunner(LanguageRunner):
                     exit_code=1,
                     duration_ms=duration_ms,
                     command=command,
+                    was_wrapped=is_fragment,
                 )
 
             # 2. Run class with assertions enabled (-ea)
@@ -132,6 +140,7 @@ class JavaRunner(LanguageRunner):
                     exit_code=proc.returncode,
                     duration_ms=duration_ms,
                     command=command,
+                    was_wrapped=is_fragment,
                 )
                 self._analyze_java_deprecations(res)
                 return res
@@ -145,6 +154,7 @@ class JavaRunner(LanguageRunner):
                     exit_code=124,
                     duration_ms=duration_ms,
                     command=command,
+                    was_wrapped=is_fragment,
                 )
 
     def _analyze_java_deprecations(self, res: RunResult):

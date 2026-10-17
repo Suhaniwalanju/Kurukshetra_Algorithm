@@ -115,6 +115,20 @@ def generate_notes_for_deck(
             f"Address common beginner misunderstandings before moving to the next concept."
         ]
 
+        was_wrapped = bool(
+            (verified_snippet and verified_snippet.get("was_wrapped"))
+            or slide.get("imports_omitted")
+        )
+        wrapped_code = (
+            (verified_snippet and verified_snippet.get("wrapped_code"))
+            or slide.get("trainer_notes")
+            or ""
+        )
+        if was_wrapped and wrapped_code:
+            talking_points.append(
+                f"Trainer Note (Imports Omitted on Slide): Slide snippet was wrapped. Full runnable version:\n{wrapped_code}"
+            )
+
         likely_questions = [
             {
                 "question": f"How does this {title.lower()} concept behave under heavy concurrent load or large inputs?",

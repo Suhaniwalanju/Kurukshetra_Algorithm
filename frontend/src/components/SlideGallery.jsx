@@ -291,10 +291,17 @@ export default function SlideGallery({
 
             return (
               <div className="space-y-2">
-                <h4 className={`text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  <Code2 className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Code Block ({(codeLang || 'CODE').toUpperCase()})</span>
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className={`text-xs font-semibold uppercase tracking-wider flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <Code2 className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Code Block ({(codeLang || 'CODE').toUpperCase()})</span>
+                  </h4>
+                  {currentSlide.imports_omitted && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                      * imports omitted
+                    </span>
+                  )}
+                </div>
                 <div className="p-3.5 rounded-xl bg-[#090D16] border border-gray-800 font-mono text-xs space-y-3">
                   <pre className="text-blue-300 overflow-x-auto leading-relaxed">
                     {codeSource}
@@ -309,6 +316,18 @@ export default function SlideGallery({
               </div>
             );
           })()}
+
+          {/* Trainer Notes with Full Runnable Version */}
+          {currentSlide.trainer_notes && (
+            <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs space-y-1.5">
+              <span className="text-purple-400 font-semibold block text-[11px] uppercase tracking-wider">
+                Trainer Notes (Full Runnable Version):
+              </span>
+              <pre className="p-2.5 rounded-lg bg-black/40 font-mono text-[11px] text-purple-200 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-purple-500/20">
+                {currentSlide.trainer_notes}
+              </pre>
+            </div>
+          )}
 
           {/* Speaker Hint */}
           {currentSlide.speaker_hint && (

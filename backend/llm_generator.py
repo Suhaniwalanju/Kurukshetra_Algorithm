@@ -46,6 +46,13 @@ class LLMGenerator:
         target_slide_count = self.calculate_slide_count(req.session_length)
         tech_full = f"{req.tech} {req.tech_version}".strip()
 
+        if getattr(req, "include_own_imports", True):
+            include_imports_rule = """7. IMPORTS REQUIREMENT:
+   - Every code snippet MUST explicitly include its own required imports/headers (e.g. 'import java.util.*;' or '#include <stdio.h>') and be completely self-contained and runnable without relying on external wrapper imports."""
+        else:
+            include_imports_rule = """7. IMPORTS OPTION:
+   - Code snippets may omit standard boilerplate imports to keep focus on minimal core syntax."""
+
         system_prompt = f"""You are an elite Computer Science Professor and verified course material author.
 You generate slide decks for CODING subjects strictly following these rules:
 
@@ -73,7 +80,7 @@ CRITICAL RULES:
    - Provide clean mermaid diagram source for architectural/flow concepts (e.g. graph LR; A --> B;).
 6. SPEAKER HINT:
    - Exactly ONE concise sentence per slide.
-
+{include_imports_rule}
 OUTPUT FORMAT:
 Return ONLY valid JSON matching this schema with no markdown wrapping, no explanation:
 {{

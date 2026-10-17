@@ -44,6 +44,9 @@ class VerificationReportGenerator:
         tech = deck_metadata.get("tech", "Java 21")
         prof = deck_metadata.get("professor_name", "Professor")
         college = deck_metadata.get("college", "University")
+        image_digest = deck_metadata.get("image_digest", "")
+        if not image_digest and snippets:
+            image_digest = next((getattr(s, "image_digest", "") for s in snippets if getattr(s, "image_digest", "")), "")
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Metrics calculation
@@ -215,6 +218,7 @@ class VerificationReportGenerator:
         .badge-healed {{ background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }}
         .badge-failed {{ background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }}
         .badge-review {{ background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.3); }}
+        .badge-low-assurance {{ background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }}
 
         /* Code & Log Blocks */
         pre, code {{
@@ -300,6 +304,7 @@ class VerificationReportGenerator:
                 <div><strong>Professor:</strong> {html.escape(prof)}</div>
                 <div><strong>Date:</strong> {date_str}</div>
                 <div><strong>Status:</strong> {"PASSED ✔" if (needs_review == 0 and failed_snippets == 0) else "NEEDS REVIEW ⚠"}</div>
+                <div><strong>Image Digest:</strong> <code>{html.escape(image_digest) if image_digest else "N/A (Process Fallback)"}</code></div>
             </div>
         </header>
 
@@ -354,6 +359,8 @@ class VerificationReportGenerator:
             status = snip.status.lower()
             if status in ["verified", "passed"]:
                 badge_html = '<span class="badge badge-verified">Verified ✔</span>'
+            elif status == "verified_low_assurance":
+                badge_html = '<span class="badge badge-low-assurance">Low Assurance ⚠</span>'
             elif status in ["auto_healed", "healed"]:
                 badge_html = '<span class="badge badge-healed">Auto-Healed ⚡</span>'
             elif status == "needs_review":
@@ -388,19 +395,37 @@ class VerificationReportGenerator:
                     </details>
                     """
 
+            snip_backend = getattr(snip, "sandbox_backend", "") or ""
+            snip_real_ver = getattr(snip, "real_runtime_version", "") or snip.version
+            backend_info = f'<br><span style="font-size: 11px; color: var(--text-muted);">Backend: {html.escape(snip_backend)}</span>' if snip_backend else ''
+            digest_info = f'<br><span style="font-size: 10px; color: var(--text-muted); font-family: monospace;">Digest: {html.escape(snip.image_digest[:16])}...</span>' if getattr(snip, "image_digest", "") else ''
+            wrapped_badge = '<div style="margin-top: 5px;"><span class="badge" style="background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4); font-size: 10px;">Wrapped (imports omitted)</span></div>' if getattr(snip, "was_wrapped", False) else ''
+            runnable_details = f"""
+            <details style="margin-top: 6px;">
+                <summary style="cursor: pointer; color: #c084fc; font-size: 11px; font-weight: 600;">Full Runnable Version (Trainer Notes)</summary>
+                <div class="cmd-box" style="margin-top: 4px; white-space: pre-wrap; font-size: 11px; color: #e2e8f0; max-height: 200px; overflow-y: auto;">{html.escape(snip.wrapped_code or "")}</div>
+            </details>
+            """ if getattr(snip, "was_wrapped", False) and snip.wrapped_code else ""
+
             html_content += f"""
                     <tr>
                         <td>
                             <strong>Slide {snip.slide_id}</strong><br>
                             <span style="font-size: 11px; color: var(--text-muted);">{html.escape(snip.id[:12])}</span><br>
-                            <span style="font-size: 11px; color: #60a5fa;">{html.escape(snip.language)} {html.escape(snip.version)}</span>
+                            <span style="font-size: 11px; color: #60a5fa;">{html.escape(snip.language)} {html.escape(snip_real_ver)}</span>
+                            {backend_info}
+                            {digest_info}
                         </td>
-                        <td>{badge_html}</td>
+                        <td>
+                            {badge_html}
+                            {wrapped_badge}
+                        </td>
                         <td style="color: var(--text-muted); font-size: 13px;">{duration_str}</td>
                         <td>
                             <div class="cmd-box">$ {cmd_str}</div>
                             {f'<div class="stderr-box"><strong>Error Log:</strong><br>{stderr_str}</div>' if stderr_str else ''}
                             {diff_html}
+                            {runnable_details}
                         </td>
                         <td>
                             <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">Captured stdout:</div>
@@ -648,11 +673,15 @@ class VerificationReportGenerator:
         tech = deck_metadata.get("tech", "Java 21")
         prof = deck_metadata.get("professor_name", "Professor")
         college = deck_metadata.get("college", "University")
+        image_digest = deck_metadata.get("image_digest", "")
+        if not image_digest and snippets:
+            image_digest = next((getattr(s, "image_digest", "") for s in snippets if getattr(s, "image_digest", "")), "")
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         elements.append(Paragraph("VERIFICATION CORE REPORT", title_style))
         elements.append(Paragraph(f"Topic: <b>{html.escape(topic)}</b> | College: <b>{html.escape(college)}</b>", subtitle_style))
         elements.append(Paragraph(f"Tech: <b>{html.escape(tech)}</b> | Professor: <b>{html.escape(prof)}</b> | Deck ID: <b>{html.escape(deck_id[:8])}</b> | Date: {date_str}", subtitle_style))
+        elements.append(Paragraph(f"Docker Image Digest: <b>{html.escape(image_digest) if image_digest else 'N/A (Process Fallback)'}</b>", subtitle_style))
         elements.append(Spacer(1, 14))
         elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#cbd5e1"), spaceAfter=14))
 
@@ -694,16 +723,18 @@ class VerificationReportGenerator:
         elements.append(Paragraph("1. Code Snippet Sandbox Verification", h2_style))
         run_by_snippet = {r.snippet_id: r for r in runs}
 
-        table_data = [["Slide", "Language", "Status", "Duration", "Captured Output"]]
+        table_data = [["Slide", "Language & Backend", "Status", "Duration", "Captured Output"]]
         for snip in snippets:
             r = run_by_snippet.get(snip.id)
-            st_text = snip.status.upper()
+            st_text = snip.status.replace("_", " ").upper()
             dur = f"{r.duration_ms}ms" if (r and r.duration_ms) else (f"{snip.duration_ms}ms" if snip.duration_ms else "-")
             stdout_text = r.stdout if (r and r.stdout) else (snip.actual_output or "")
             out_preview = (stdout_text[:80] + "...") if (len(stdout_text) > 80) else (stdout_text if stdout_text else "(none)")
+            backend_str = f" ({snip.sandbox_backend})" if getattr(snip, "sandbox_backend", "") else ""
+            wrapped_str = "<br/><font color='#7c3aed'><b>[Wrapped: imports omitted]</b></font>" if getattr(snip, "was_wrapped", False) else ""
             table_data.append([
                 f"Slide {snip.slide_id}",
-                f"{snip.language} {snip.version}",
+                Paragraph(f"{snip.language} {getattr(snip, 'real_runtime_version', '') or snip.version}{backend_str}{wrapped_str}", body_style),
                 st_text,
                 dur,
                 Paragraph(html.escape(out_preview), code_style),

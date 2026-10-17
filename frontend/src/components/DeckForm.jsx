@@ -111,6 +111,7 @@ export default function DeckForm({
     session_length: 20,
     tech: '',
     tech_version: '',
+    include_own_imports: true,
   });
 
   useEffect(() => {
@@ -437,6 +438,27 @@ export default function DeckForm({
               </span>
             )}
           </div>
+        </div>
+
+        {/* 6. Prompt Import Option */}
+        <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+          isDark ? 'bg-gray-900/60 border-gray-800' : 'bg-gray-50 border-gray-200'
+        }`}>
+          <div className="flex items-center space-x-2.5">
+            <input
+              id="include_own_imports"
+              type="checkbox"
+              checked={formData.include_own_imports}
+              onChange={(e) => setFormData({ ...formData, include_own_imports: e.target.checked })}
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-600 bg-gray-800 cursor-pointer"
+            />
+            <label htmlFor="include_own_imports" className="text-xs font-medium cursor-pointer">
+              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Require Self-Contained Imports:</span> Prompt model to include all necessary imports directly in code snippets
+            </label>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            {formData.include_own_imports ? 'Explicit Imports' : 'Allow Omitted'}
+          </span>
         </div>
 
         {/* Submit Button */}

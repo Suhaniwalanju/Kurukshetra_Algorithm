@@ -45,7 +45,7 @@ class ExerciseProver:
             source_code=ref_code,
             version=version,
         )
-        ref_passed = ref_res.exit_code == 0
+        ref_passed = (ref_res.classification == "PASS")
 
         # If reference failed, apply quick heal
         if not ref_passed:
@@ -57,9 +57,9 @@ class ExerciseProver:
                 source_code=ref_code,
                 version=version,
             )
-            ref_passed = ref_res.exit_code == 0
+            ref_passed = (ref_res.classification == "PASS")
 
-        # 3. Test Naive Solution (MUST FAIL)
+        # 3. Test Naive Solution (MUST FAIL on TEST_FAILURE)
         naive_code = self._combine_test_and_solution(language, suite["test_code"], suite["naive_solution"])
         naive_res = sandbox_engine.run_snippet(
             snippet_id=f"ex_{deck_id}_{slide_id}_naive",
@@ -67,13 +67,33 @@ class ExerciseProver:
             source_code=naive_code,
             version=version,
         )
-        naive_failed = naive_res.exit_code != 0
+        # The naive solution counts as failing only on TEST_FAILURE
+        naive_failed = (naive_res.classification == "TEST_FAILURE")
 
-        # If naive passes, strengthen tests (up to 3 times)
+        # If naive passes or did not fail on TEST_FAILURE, strengthen tests (up to 3 times)
         attempts = 0
         while not naive_failed and attempts < 3:
             attempts += 1
+            prev_test_code = suite["test_code"]
             suite["test_code"] = self._strengthen_tests(language, suite["test_code"], suite["naive_solution"])
+
+            # Requirement: After every test-strengthening step, re-run the reference solution and require PASS
+            ref_code = self._combine_test_and_solution(language, suite["test_code"], suite["reference_solution"])
+            ref_res = sandbox_engine.run_snippet(
+                snippet_id=f"ex_{deck_id}_{slide_id}_ref_s{attempts}",
+                language=language,
+                source_code=ref_code,
+                version=version,
+            )
+            if ref_res.classification != "PASS":
+                # Reference solution did not pass strengthened tests! Revert strengthening and enforce requirement
+                suite["test_code"] = prev_test_code
+                ref_passed = False
+                break
+            else:
+                ref_passed = True
+
+            # Test naive solution against strengthened tests
             naive_code = self._combine_test_and_solution(language, suite["test_code"], suite["naive_solution"])
             naive_res = sandbox_engine.run_snippet(
                 snippet_id=f"ex_{deck_id}_{slide_id}_naive_s{attempts}",
@@ -81,39 +101,94 @@ class ExerciseProver:
                 source_code=naive_code,
                 version=version,
             )
-            naive_failed = naive_res.exit_code != 0
+            # The naive solution counts as failing only on TEST_FAILURE
+            naive_failed = (naive_res.classification == "TEST_FAILURE")
 
-        # 4. Mutation Testing (5 to 8 mutants)
-        mutants = self._generate_mutants(language, suite["reference_solution"])
+        # 4. Mutation Testing:
+        # - Discard mutants that return COMPILE_ERROR and regenerate them
+        # - Count a mutant as killed ONLY on TEST_FAILURE
+        candidate_mutants = self._generate_candidate_mutants(language, suite["reference_solution"])
+        accepted_mutants = []
         killed_count = 0
+        target_count = min(6, max(5, len(candidate_mutants)))
         matrix = {
-            "reference": {"status": "PASS" if ref_passed else "FAIL", "expected": "PASS", "score": 1.0 if ref_passed else 0.0},
-            "naive": {"status": "FAIL" if naive_failed else "PASS", "expected": "FAIL", "score": 1.0 if naive_failed else 0.0},
+            "reference": {
+                "status": "PASS" if ref_passed else ref_res.classification,
+                "expected": "PASS",
+                "score": 1.0 if ref_passed else 0.0,
+            },
+            "naive": {
+                "status": "FAIL (TEST_FAILURE)" if naive_failed else naive_res.classification,
+                "expected": "TEST_FAILURE",
+                "score": 1.0 if naive_failed else 0.0,
+            },
             "mutants": [],
         }
 
-        for idx, mutant in enumerate(mutants):
+        candidate_idx = 0
+        while len(accepted_mutants) < target_count and candidate_idx < len(candidate_mutants):
+            mutant = candidate_mutants[candidate_idx]
+            candidate_idx += 1
+
             m_code = self._combine_test_and_solution(language, suite["test_code"], mutant["code"])
             m_res = sandbox_engine.run_snippet(
-                snippet_id=f"ex_{deck_id}_{slide_id}_mutant_{idx}",
+                snippet_id=f"ex_{deck_id}_{slide_id}_mutant_{len(accepted_mutants) + 1}",
                 language=language,
                 source_code=m_code,
                 version=version,
             )
-            # If mutant fails tests, it is KILLED (successful test strength)
-            is_killed = m_res.exit_code != 0
+
+            # Discard mutants that return COMPILE_ERROR and regenerate them
+            if m_res.classification == "COMPILE_ERROR":
+                continue
+
+            # Count a mutant as killed only on TEST_FAILURE
+            is_killed = (m_res.classification == "TEST_FAILURE")
             if is_killed:
                 killed_count += 1
 
-            matrix["mutants"].append({
-                "id": f"Mutant-{idx + 1}",
+            mutant_entry = {
+                "id": f"Mutant-{len(accepted_mutants) + 1}",
                 "name": mutant["name"],
                 "description": mutant["description"],
-                "status": "KILLED (FAIL)" if is_killed else "SURVIVED (PASS)",
+                "classification": m_res.classification,
+                "status": "KILLED (TEST_FAILURE)" if is_killed else f"SURVIVED ({m_res.classification})",
                 "killed": is_killed,
-            })
+            }
+            accepted_mutants.append(mutant_entry)
+            matrix["mutants"].append(mutant_entry)
 
-        total_mutants = max(1, len(mutants))
+        # If more mutants are needed to reach target_count (due to discarded COMPILE_ERROR mutants), dynamically generate
+        dynamic_attempt = 0
+        while len(accepted_mutants) < target_count and dynamic_attempt < 10:
+            dynamic_attempt += 1
+            dyn_mutant = self._create_dynamic_mutant(language, suite["reference_solution"], dynamic_attempt)
+            m_code = self._combine_test_and_solution(language, suite["test_code"], dyn_mutant["code"])
+            m_res = sandbox_engine.run_snippet(
+                snippet_id=f"ex_{deck_id}_{slide_id}_mutant_dyn_{dynamic_attempt}",
+                language=language,
+                source_code=m_code,
+                version=version,
+            )
+            if m_res.classification == "COMPILE_ERROR":
+                continue
+
+            is_killed = (m_res.classification == "TEST_FAILURE")
+            if is_killed:
+                killed_count += 1
+
+            mutant_entry = {
+                "id": f"Mutant-{len(accepted_mutants) + 1}",
+                "name": dyn_mutant["name"],
+                "description": dyn_mutant["description"],
+                "classification": m_res.classification,
+                "status": "KILLED (TEST_FAILURE)" if is_killed else f"SURVIVED ({m_res.classification})",
+                "killed": is_killed,
+            }
+            accepted_mutants.append(mutant_entry)
+            matrix["mutants"].append(mutant_entry)
+
+        total_mutants = max(1, len(accepted_mutants))
         mutation_score = round((killed_count / total_mutants) * 100, 1)
 
         # 5. Persist Record
@@ -228,67 +303,85 @@ class ExerciseProver:
 
     def _strengthen_tests(self, language: str, current_test_code: str, naive_code: str) -> str:
         if language == "java":
-            return current_test_code.replace(
-                "if (Solution.compute(new int[]{}) != 0) throw new AssertionError(\"Test 3 failed\");",
-                "if (Solution.compute(new int[]{}) != 0) throw new AssertionError(\"Test 3 failed\");\n        if (Solution.compute(new int[]{2, 4, 6}) != 12) throw new AssertionError(\"Test 4 failed\");",
-            )
-        return current_test_code
+            if "Test 4 failed" not in current_test_code:
+                return current_test_code.replace(
+                    "if (Solution.compute(new int[]{}) != 0) throw new AssertionError(\"Test 3 failed\");",
+                    "if (Solution.compute(new int[]{}) != 0) throw new AssertionError(\"Test 3 failed\");\n        if (Solution.compute(new int[]{2, 4, 6}) != 12) throw new AssertionError(\"Test 4 failed\");",
+                )
+            elif "Test 5 failed" not in current_test_code:
+                return current_test_code.replace(
+                    "if (Solution.compute(new int[]{2, 4, 6}) != 12) throw new AssertionError(\"Test 4 failed\");",
+                    "if (Solution.compute(new int[]{2, 4, 6}) != 12) throw new AssertionError(\"Test 4 failed\");\n        if (Solution.compute(new int[]{-1, 1}) != 0) throw new AssertionError(\"Test 5 failed\");",
+                )
+            return current_test_code
+        else:
+            if "Test 4 failed" not in current_test_code:
+                return current_test_code.replace(
+                    "assert compute([]) == 0, 'Test 3 failed'",
+                    "assert compute([]) == 0, 'Test 3 failed'\n    assert compute([2, 4, 6]) == 12, 'Test 4 failed'",
+                )
+            elif "Test 5 failed" not in current_test_code:
+                return current_test_code.replace(
+                    "assert compute([2, 4, 6]) == 12, 'Test 4 failed'",
+                    "assert compute([2, 4, 6]) == 12, 'Test 4 failed'\n    assert compute([-1, 1]) == 0, 'Test 5 failed'",
+                )
+            return current_test_code
 
-    def _generate_mutants(self, language: str, reference_code: str) -> List[Dict[str, str]]:
-        """Generates 5-8 buggy mutants of reference solution."""
+    def _generate_candidate_mutants(self, language: str, reference_code: str) -> List[Dict[str, str]]:
+        """Generates candidate buggy mutants of reference solution."""
         mutants = []
 
         if language == "java":
-            # Mutant 1: Off-by-one / starting index bug
-            m1 = reference_code.replace("int sum = 0;", "int sum = 1;")
+            # Mutant 1: Off-by-one initial state
             mutants.append({
                 "name": "Off-by-one initial state",
                 "description": "Initialized accumulator sum to 1 instead of 0",
-                "code": m1,
+                "code": reference_code.replace("int sum = 0;", "int sum = 1;"),
             })
-
             # Mutant 2: Operator flip (+ to -)
-            m2 = reference_code.replace("sum += n;", "sum -= n;")
             mutants.append({
                 "name": "Operator Flip (+ to -)",
                 "description": "Subtracted items instead of adding",
-                "code": m2,
+                "code": reference_code.replace("sum += n;", "sum -= n;"),
             })
-
             # Mutant 3: Missing null / boundary handling
-            m3 = reference_code.replace("int sum = 0;", "if (nums == null) return -999; int sum = 0;")
             mutants.append({
                 "name": "Faulty Null Injection",
                 "description": "Returns negative sentinel incorrectly",
-                "code": m3,
+                "code": reference_code.replace("int sum = 0;", "if (nums == null) return -999; int sum = 0;"),
             })
-
             # Mutant 4: Early Loop Termination
-            m4 = reference_code.replace("sum += n;", "sum += n; break;")
             mutants.append({
                 "name": "Early Loop Break",
                 "description": "Breaks out of loop after first element",
-                "code": m4,
+                "code": reference_code.replace("sum += n;", "sum += n; break;"),
             })
-
             # Mutant 5: Zeroed return
-            m5 = reference_code.replace("return sum;", "return 0;")
             mutants.append({
                 "name": "Constant Return",
                 "description": "Always returns 0",
-                "code": m5,
+                "code": reference_code.replace("return sum;", "return 0;"),
             })
-
             # Mutant 6: Negated accumulator
-            m6 = reference_code.replace("return sum;", "return -sum;")
             mutants.append({
                 "name": "Negated Return Value",
                 "description": "Inverts the calculated integer sum",
-                "code": m6,
+                "code": reference_code.replace("return sum;", "return -sum;"),
             })
-
+            # Mutant 7: Increment return
+            mutants.append({
+                "name": "Increment Return",
+                "description": "Adds 1 to final sum",
+                "code": reference_code.replace("return sum;", "return sum + 1;"),
+            })
+            # Mutant 8: Double addition
+            mutants.append({
+                "name": "Double Addition",
+                "description": "Adds 2*n to sum",
+                "code": reference_code.replace("sum += n;", "sum += (n * 2);"),
+            })
         else:
-            # Python mutants
+            # Python candidate mutants
             mutants.append({
                 "name": "Off-by-one initial state",
                 "description": "Adds 1 to final sum",
@@ -314,8 +407,42 @@ class ExerciseProver:
                 "description": "Computes product instead of sum",
                 "code": "def compute(nums: list) -> int:\n    return len(nums) * 2\n",
             })
+            mutants.append({
+                "name": "Increment return",
+                "description": "Adds 2 to final sum",
+                "code": reference_code.replace("return sum(nums)", "return sum(nums) + 2"),
+            })
+            mutants.append({
+                "name": "Decrement return",
+                "description": "Subtracts 1 from final sum",
+                "code": reference_code.replace("return sum(nums)", "return sum(nums) - 1"),
+            })
+            mutants.append({
+                "name": "Double return",
+                "description": "Doubles calculated sum",
+                "code": reference_code.replace("return sum(nums)", "return sum(nums) * 2"),
+            })
 
         return mutants
+
+    def _generate_mutants(self, language: str, reference_code: str) -> List[Dict[str, str]]:
+        return self._generate_candidate_mutants(language, reference_code)
+
+    def _create_dynamic_mutant(self, language: str, reference_code: str, index: int) -> Dict[str, str]:
+        """Dynamically generates a mutant variant to replace discarded compile error mutants."""
+        delta = index * 2 + 1
+        if language == "java":
+            return {
+                "name": f"Dynamic Variation {index}",
+                "description": f"Modifies calculated return value by +{delta}",
+                "code": reference_code.replace("return sum;", f"return sum + {delta};"),
+            }
+        else:
+            return {
+                "name": f"Dynamic Variation {index}",
+                "description": f"Modifies calculated return value by +{delta}",
+                "code": reference_code.replace("return sum(nums)", f"return sum(nums) + {delta}"),
+            }
 
 
 exercise_prover = ExerciseProver()

@@ -104,6 +104,11 @@ class SnippetRecord(Base):
     mismatch_detected = Column(Boolean, default=False)
     deprecation_level = Column(String(16), default="none")  # none, warning, removal
     deprecation_details = Column(Text, default="")
+    sandbox_backend = Column(String(32), default="docker")  # docker or isolated_local_subprocess
+    real_runtime_version = Column(String(128), default="")
+    image_digest = Column(String(128), default="")
+    classification = Column(String(32), default="PASS")  # COMPILE_ERROR, TEST_FAILURE, RUNTIME_ERROR, TIMEOUT, PASS
+    was_wrapped = Column(Boolean, default=False)
     attempts_count = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -136,6 +141,11 @@ class SnippetRecord(Base):
             "mismatch_detected": self.mismatch_detected,
             "deprecation_level": self.deprecation_level,
             "deprecation_details": self.deprecation_details,
+            "sandbox_backend": getattr(self, "sandbox_backend", "docker") or "docker",
+            "real_runtime_version": getattr(self, "real_runtime_version", "") or "",
+            "image_digest": getattr(self, "image_digest", "") or "",
+            "classification": getattr(self, "classification", "PASS") or "PASS",
+            "was_wrapped": bool(getattr(self, "was_wrapped", False)),
             "attempts_count": self.attempts_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -338,6 +348,24 @@ def init_db():
                 conn.commit()
             except Exception:
                 pass
+
+        snippet_cols = [
+            ("sandbox_backend", "VARCHAR(32) DEFAULT 'docker'"),
+            ("real_runtime_version", "VARCHAR(128) DEFAULT ''"),
+            ("image_digest", "VARCHAR(128) DEFAULT ''"),
+            ("classification", "VARCHAR(32) DEFAULT 'PASS'"),
+            ("was_wrapped", "BOOLEAN DEFAULT 0"),
+        ]
+        for col, col_type in snippet_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE snippets ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
+
+
+# Auto-apply schema migrations on module import
+init_db()
 
 
 def get_db():

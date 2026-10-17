@@ -38,6 +38,9 @@ class Slide(BaseModel):
     exercise_ref: Optional[str] = Field(default="", description="Optional reference id or brief exercise instruction")
     speaker_hint: Optional[str] = Field(default="", description="Single line speaker note")
     verification_badge: Optional[str] = Field(default=None, description="Small badge: Verified ✔ Ran on <tech+version> · <date>")
+    imports_omitted: Optional[bool] = Field(default=False, description="Whether imports were omitted on the slide and code was wrapped")
+    imports_omitted_note: Optional[str] = Field(default="", description="Note indicating imports omitted")
+    trainer_notes: Optional[str] = Field(default="", description="Full runnable code and notes for trainer")
 
     @field_validator("title")
     @classmethod
@@ -77,6 +80,7 @@ class DeckCreateRequest(BaseModel):
     session_length: int = Field(..., ge=5, le=180, description="Duration in minutes (5 to 180)")
     tech: str = Field(..., min_length=1, description="Primary technology")
     tech_version: Optional[str] = Field(default="", description="Technology version e.g. 21, 3.12")
+    include_own_imports: bool = Field(default=True, description="When true, slide generation prompt requires model to include its own imports")
 
 
 class BoundingBox(BaseModel):

@@ -110,6 +110,18 @@ class PPTXBuilder:
                 elif box.element_type == "diagram":
                     self._add_diagram(pptx_slide, slide, left_in, top_in, width_in, height_in, plan, config)
 
+            # 3. Slide Speaker and Trainer Notes (including full runnable code when fragment was wrapped)
+            notes_parts = []
+            if getattr(slide, "speaker_hint", ""):
+                notes_parts.append(f"Speaker Hint:\n{slide.speaker_hint}")
+            if getattr(slide, "trainer_notes", ""):
+                notes_parts.append(f"Trainer Notes:\n{slide.trainer_notes}")
+            if notes_parts:
+                try:
+                    pptx_slide.notes_slide.notes_text_frame.text = "\n\n".join(notes_parts)
+                except Exception:
+                    pass
+
         prs.save(output_pptx_path)
         return output_pptx_path
 
@@ -157,24 +169,35 @@ class PPTXBuilder:
         p.alignment = PP_ALIGN.LEFT
 
         if badge:
-            # Place verified badge inside footer zone on the right side with zero overlap
+            # Place verified/unverified badge inside footer zone on the right side with zero overlap
             badge_width = Inches(3.6)
             badge_left = left + width - badge_width
             badge_shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, badge_left, top, badge_width, height)
             badge_shape.fill.solid()
-            badge_shape.fill.fore_color.rgb = RGBColor(240, 253, 244)
-            badge_shape.line.color.rgb = RGBColor(34, 197, 94)
+
+            is_unverified = "unverified" in badge.lower()
+            if is_unverified:
+                badge_shape.fill.fore_color.rgb = RGBColor(254, 242, 242)
+                badge_shape.line.color.rgb = RGBColor(239, 68, 68)
+                text_color = RGBColor(185, 28, 28)
+                badge_label = f"⚠ {badge}" if "⚠" not in badge else badge
+            else:
+                badge_shape.fill.fore_color.rgb = RGBColor(240, 253, 244)
+                badge_shape.line.color.rgb = RGBColor(34, 197, 94)
+                text_color = RGBColor(22, 101, 52)
+                badge_label = badge if ("✔" in badge or "✓" in badge) else f"✓ {badge}"
+
             badge_shape.line.width = Pt(1)
 
             btf = badge_shape.text_frame
             btf.word_wrap = True
             btf.vertical_anchor = MSO_ANCHOR.MIDDLE
             bp = btf.paragraphs[0]
-            bp.text = f"✓ {badge}"
+            bp.text = badge_label
             bp.font.name = config.fonts.code
             bp.font.size = Pt(10)
             bp.font.bold = True
-            bp.font.color.rgb = RGBColor(22, 101, 52)
+            bp.font.color.rgb = text_color
             bp.alignment = PP_ALIGN.CENTER
 
     def _add_bullets(self, slide, slide_data: Slide, left, top, width, height, plan: SlideLayoutPlan, config: TemplateLayoutConfig):
@@ -225,12 +248,24 @@ class PPTXBuilder:
 
         # Header tag (Language & Version pill)
         lang_header = f"// Language: {code_data.language.upper()} {code_data.version or ''}".strip()
+        if getattr(slide_data, "imports_omitted", False):
+            lang_header += "   •   [imports omitted]"
+
         p_head = tf.paragraphs[0]
         p_head.text = lang_header
         p_head.font.name = config.fonts.code
         p_head.font.size = Pt(12)
         p_head.font.color.rgb = RGBColor(96, 165, 250)
         p_head.space_after = Pt(8)
+
+        if getattr(slide_data, "imports_omitted", False):
+            p_note = tf.add_paragraph()
+            p_note.text = "// * imports omitted (full runnable version in trainer notes)"
+            p_note.font.name = config.fonts.code
+            p_note.font.size = Pt(11)
+            p_note.font.italic = True
+            p_note.font.color.rgb = RGBColor(192, 132, 252)
+            p_note.space_after = Pt(4)
 
         # 2. Syntax Highlighted Code Runs using Pygments
         code_font_size = plan.font_sizes.get("code", 18)

@@ -216,12 +216,52 @@ class VerificationCoordinator:
         content_reviews.append(c_review)
 
         # -------------------------------------------------------------
-        # STEP 7: Stamp "Verified ✔ Ran on <tech+version> · <date>" Badge
+        # STEP 7: Stamp Verification Badge According to Strict Rules:
+        # 1. Appears only on slides where every snippet is verified or auto_healed AND ran with sandbox_backend == "docker"
+        # 2. Uses real runtime version recorded from the container in the badge
+        # 3. Slides with needs_review snippets get a visible "Unverified" badge
+        # 4. Slides with no code get no badge
+        # 5. If fallback process backend was used, never show the green badge
         # -------------------------------------------------------------
         date_str = datetime.now().strftime("%Y-%m-%d")
-        badge_text = f"Verified ✔ Ran on {tech} {version} · {date_str}"
+        snips_by_slide: Dict[int, List[SnippetRecord]] = {}
+        for sn in snippets:
+            snips_by_slide.setdefault(sn.slide_id, []).append(sn)
+
         for s in slides_data:
-            s["verification_badge"] = badge_text
+            s_id = s.get("id")
+            s_snips = snips_by_slide.get(s_id, [])
+            code_obj = s.get("code")
+            has_code = bool((code_obj and isinstance(code_obj, dict) and code_obj.get("source", "").strip()) or s_snips)
+
+            if not has_code:
+                # Slides with no code get no badge
+                s["verification_badge"] = None
+            else:
+                has_needs_review = any(sn.status == "needs_review" for sn in s_snips)
+                has_failed = any(sn.status == "failed" for sn in s_snips)
+                has_low_assurance = any(sn.status == "verified_low_assurance" or getattr(sn, "sandbox_backend", "") != "docker" for sn in s_snips)
+                all_verified_docker = (
+                    len(s_snips) > 0
+                    and all(
+                        sn.status in ["verified", "auto_healed"] and getattr(sn, "sandbox_backend", "") == "docker"
+                        for sn in s_snips
+                    )
+                )
+
+                if has_needs_review or has_failed:
+                    # Slides with needs_review snippets get a visible "Unverified" badge
+                    s["verification_badge"] = "Unverified"
+                elif all_verified_docker:
+                    # Verified in Docker: use real runtime version string recorded from container
+                    real_v = next((sn.real_runtime_version for sn in s_snips if getattr(sn, "real_runtime_version", "")), None)
+                    runtime_str = real_v if real_v else f"{tech} {version}"
+                    s["verification_badge"] = f"Verified ✔ Ran on {runtime_str} · {date_str}"
+                elif has_low_assurance:
+                    # Fallback process backend was used: never show the green badge
+                    s["verification_badge"] = "Unverified"
+                else:
+                    s["verification_badge"] = "Unverified"
 
         # -------------------------------------------------------------
         # STEP 8: Re-Render Deck & Template Compliance QA
@@ -258,11 +298,17 @@ class VerificationCoordinator:
         html_report_path = os.path.join(output_dir, "verification_report.html")
         pdf_report_path = os.path.join(output_dir, "verification_report.pdf")
 
+        # Discover or query image digest
+        img_digest = next((sn.image_digest for sn in snippets if getattr(sn, "image_digest", "")), "")
+        if not img_digest:
+            img_digest = sandbox_engine.get_image_digest(tech)
+
         deck_meta = {
             "topic": deck.topic,
             "college": deck.college,
             "professor_name": deck.professor_name,
             "tech": f"{tech} {version}",
+            "image_digest": img_digest,
         }
 
         self.report_gen.generate_html_report(

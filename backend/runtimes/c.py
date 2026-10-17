@@ -33,7 +33,8 @@ class CRunner(LanguageRunner):
         has_main = bool(re.search(r'\bint\s+main\s*\(', cleaned))
 
         if has_main:
-            wrapped = f"{C_HEADERS}\n{cleaned}"
+            # Remove silent auto-imports: verify code exactly as shown on the slide
+            return {"main.c": cleaned}
         else:
             wrapped = (
                 f"{C_HEADERS}\n"
@@ -42,22 +43,29 @@ class CRunner(LanguageRunner):
                 f"    return 0;\n"
                 f"}}\n"
             )
-        return {"main.c": wrapped}
+            return {"main.c": wrapped}
 
     def execute(self, snippet: str, timeout_sec: int = 20, options: Optional[Dict[str, Any]] = None) -> RunResult:
         files = self.prepare(snippet, options)
         command = "gcc -std=c17 -Wall -Wextra -fsanitize=address,undefined -O1 main.c -o main && ./main"
+        has_main = bool(re.search(r'\bint\s+main\s*\(', snippet.strip()))
+        is_fragment = not has_main
 
         if self.is_docker_available():
             res = self.run_in_docker(files, command, timeout_sec=timeout_sec, network="none")
+            res.was_wrapped = is_fragment
             self._analyze_sanitizers(res)
             return res
 
         if self._has_local_toolchain():
-            return self._execute_local_gcc(files, timeout_sec)
+            res = self._execute_local_gcc(files, timeout_sec)
+            res.was_wrapped = is_fragment
+            return res
 
         # Fallback executor for environments where gcc is not in PATH
-        return self._execute_fallback(files, snippet, timeout_sec)
+        res = self._execute_fallback(files, snippet, timeout_sec)
+        res.was_wrapped = is_fragment
+        return res
 
     def _execute_local_gcc(self, files: Dict[str, str], timeout_sec: int) -> RunResult:
         start_time = time.time()

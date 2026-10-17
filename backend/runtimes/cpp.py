@@ -35,7 +35,8 @@ class CppRunner(LanguageRunner):
         has_main = bool(re.search(r'\bint\s+main\s*\(', cleaned))
 
         if has_main:
-            wrapped = f"{CPP20_HEADERS}\n{cleaned}"
+            # Remove silent auto-imports: verify code exactly as shown on the slide
+            return {"main.cpp": cleaned}
         else:
             wrapped = (
                 f"{CPP20_HEADERS}\n"
@@ -44,21 +45,28 @@ class CppRunner(LanguageRunner):
                 f"    return 0;\n"
                 f"}}\n"
             )
-        return {"main.cpp": wrapped}
+            return {"main.cpp": wrapped}
 
     def execute(self, snippet: str, timeout_sec: int = 20, options: Optional[Dict[str, Any]] = None) -> RunResult:
         files = self.prepare(snippet, options)
         command = "g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined -O1 main.cpp -o main && ./main"
+        has_main = bool(re.search(r'\bint\s+main\s*\(', snippet.strip()))
+        is_fragment = not has_main
 
         if self.is_docker_available():
             res = self.run_in_docker(files, command, timeout_sec=timeout_sec, network="none")
+            res.was_wrapped = is_fragment
             self._analyze_sanitizers(res)
             return res
 
         if self._has_local_toolchain():
-            return self._execute_local_gpp(files, timeout_sec)
+            res = self._execute_local_gpp(files, timeout_sec)
+            res.was_wrapped = is_fragment
+            return res
 
-        return self._execute_fallback(files, snippet, timeout_sec)
+        res = self._execute_fallback(files, snippet, timeout_sec)
+        res.was_wrapped = is_fragment
+        return res
 
     def _execute_local_gpp(self, files: Dict[str, str], timeout_sec: int) -> RunResult:
         start_time = time.time()

@@ -84,18 +84,37 @@ class SelfHealingLoop:
 
             if is_success:
                 # Update snippet record and slide
-                snippet.status = "auto_healed"
+                if getattr(new_result, "sandbox_backend", "") == "docker":
+                    snippet.status = "auto_healed"
+                else:
+                    snippet.status = "verified_low_assurance"
                 snippet.source_code = fixed_code
                 snippet.actual_output = new_result.stdout or "Execution verified"
                 snippet.compiler_output = new_result.compiler_output
                 snippet.stderr = new_result.stderr
                 snippet.exit_code = 0
                 snippet.duration_ms = new_result.duration_ms
+                snippet.sandbox_backend = getattr(new_result, "sandbox_backend", "docker")
+                snippet.real_runtime_version = getattr(new_result, "real_runtime_version", "")
+                snippet.image_digest = getattr(new_result, "image_digest", "")
+                snippet.classification = getattr(new_result, "classification", "PASS")
+                snippet.was_wrapped = getattr(new_result, "was_wrapped", False)
 
                 # Update slide
                 if slide.get("code"):
                     slide["code"]["source"] = fixed_code
                     slide["code"]["expected_output"] = new_result.stdout or "Execution verified"
+
+                if snippet.was_wrapped:
+                    slide["imports_omitted"] = True
+                    slide["imports_omitted_note"] = "imports omitted"
+                    full_runnable = (new_result.wrapped_code or snippet.wrapped_code or "").strip()
+                    runnable_section = f"Full runnable version (with imports):\n{full_runnable}"
+                    existing_trainer = slide.get("trainer_notes", "") or ""
+                    if full_runnable and full_runnable not in existing_trainer:
+                        slide["trainer_notes"] = f"{existing_trainer}\n\n{runnable_section}".strip()
+                    elif not existing_trainer and full_runnable:
+                        slide["trainer_notes"] = runnable_section
 
                 # Re-run layout engine for this slide so it still fits
                 self._re_layout_slide(slide, config, professor_name)

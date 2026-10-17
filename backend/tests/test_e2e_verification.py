@@ -115,12 +115,13 @@ def test_e2e_java_21_spring_boot_deck_with_injected_broken_snippet():
         assert "before_attempt" in last_log.diff_text
         assert "after_attempt" in last_log.diff_text
 
-        # Verify snippet status became auto_healed
+        # Verify snippet status became verified_low_assurance because process backend was used
         healed_snippet = session.query(SnippetRecord).filter(
             SnippetRecord.deck_id == deck_id,
             SnippetRecord.slide_id == 3,
         ).first()
-        assert healed_snippet.status == "auto_healed"
+        assert healed_snippet.status in ["verified_low_assurance", "auto_healed"]
+        assert healed_snippet.sandbox_backend == "isolated_local_subprocess"
         assert "System.out.println(\"Java 21 Virtual Thread Running\");" in healed_snippet.source_code or healed_snippet.source_code.strip().endswith(";")
 
         # 3. Real output injection check
@@ -130,10 +131,14 @@ def test_e2e_java_21_spring_boot_deck_with_injected_broken_snippet():
         slide_2_code = updated_slides[1]["code"]
         assert "Spring Boot 3 Web Endpoint Initialized" in slide_2_code["expected_output"]
 
-        # 4. Verified badge check on slides
-        for s in updated_slides:
-            assert "verification_badge" in s
-            assert "Verified ✔ Ran on Java 21" in s["verification_badge"]
+        # 4. Verified badge check on slides:
+        # - Slides with no code get NO badge (None)
+        # - Slides run with fallback process backend get "Unverified" (never show green badge)
+        assert updated_slides[0].get("verification_badge") is None  # Slide 1 (cover)
+        assert updated_slides[4].get("verification_badge") is None  # Slide 5 (closing)
+        for s in updated_slides[1:4]:
+            assert s.get("verification_badge") == "Unverified"
+            assert "Verified ✔" not in (s.get("verification_badge") or "")
 
         # 5. Exercise Proof: Reference passes, naive fails, mutation score computed
         exercise_proofs = session.query(ExerciseProofRecord).filter(ExerciseProofRecord.deck_id == deck_id).all()
@@ -162,6 +167,7 @@ def test_e2e_java_21_spring_boot_deck_with_injected_broken_snippet():
         assert "Auto-Healed" in html_content
         assert "View Auto-Healing Diff" in html_content
         assert "Mutation Score" in html_content
+        assert "Image Digest" in html_content
 
     finally:
         session.close()

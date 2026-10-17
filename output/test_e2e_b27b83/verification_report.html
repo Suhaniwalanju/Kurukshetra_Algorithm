@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Report - Spring Boot 3 &amp; Java 21 Architecture</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --border-color: #334155;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 32px 24px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 28px 32px;
+            margin-bottom: 28px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+        .header-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+        .header-title { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+        .header-subtitle { color: var(--text-muted); font-size: 15px; margin-top: 6px; }
+        .badge-deck {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .header-meta {
+            display: flex;
+            gap: 24px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+            font-size: 14px;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+        .header-meta strong { color: var(--text-main); }
+        
+        /* Summary Grid */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-value { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+        .stat-label { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-green { color: var(--accent-green); }
+        .stat-blue { color: var(--accent-blue); }
+        .stat-amber { color: var(--accent-amber); }
+        .stat-purple { color: var(--accent-purple); }
+        .stat-red { color: var(--accent-red); }
+
+        /* Section Styling */
+        section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 28px;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .section-title { font-size: 18px; font-weight: 700; color: #fff; }
+        
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            text-align: left;
+        }
+        th {
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            padding: 12px 14px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+        td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+            vertical-align: top;
+        }
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-verified { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-healed { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-failed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-review { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.3); }
+        .badge-low-assurance { background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
+
+        /* Code & Log Blocks */
+        pre, code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .cmd-box {
+            background: #090d16;
+            border: 1px solid #1e293b;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #93c5fd;
+            word-break: break-all;
+            margin-bottom: 6px;
+        }
+        .output-box {
+            background: #090d16;
+            border: 1px solid #1e293b;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #e2e8f0;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .stderr-box {
+            color: #fca5a5;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-top: 6px;
+            white-space: pre-wrap;
+        }
+
+        /* Diff Styles */
+        .diff-container {
+            background: #090d16;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            margin-top: 8px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .diff-added { color: #4ade80; background: rgba(74, 222, 128, 0.1); display: block; }
+        .diff-removed { color: #f87171; background: rgba(248, 113, 113, 0.1); display: block; }
+        .diff-meta { color: #94a3b8; display: block; }
+
+        /* Exercise Matrix Table */
+        .matrix-table th, .matrix-table td { text-align: center; }
+        .matrix-table td:first-child, .matrix-table th:first-child { text-align: left; }
+        .cell-pass { color: #34d399; font-weight: bold; }
+        .cell-fail { color: #f87171; font-weight: bold; }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="header-top">
+                <div>
+                    <h1 class="header-title">Verification Core Report</h1>
+                    <div class="header-subtitle">Spring Boot 3 &amp; Java 21 Architecture &bull; DPU</div>
+                </div>
+                <div>
+                    <span class="badge-deck">Deck ID: test_e2e</span>
+                </div>
+            </div>
+            <div class="header-meta">
+                <div><strong>Technology:</strong> Java 21</div>
+                <div><strong>Professor:</strong> Dr. Samruddhi Khade</div>
+                <div><strong>Date:</strong> 2026-10-17 05:21:44</div>
+                <div><strong>Status:</strong> PASSED ✔</div>
+                <div><strong>Image Digest:</strong> <code>eclipse-temurin:21-jdk-alpine@sha256:7b5d1e4392a874f6e21b03e2c34a6e8b7c439f018e652a129efb923415cf98a1</code></div>
+            </div>
+        </header>
+
+        <!-- KPI Summary Cards -->
+        <div class="summary-grid">
+            <div class="stat-card">
+                <div class="stat-value stat-green">1/3</div>
+                <div class="stat-label">Snippets Verified</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-amber">1</div>
+                <div class="stat-label">Auto-Healed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-red">0</div>
+                <div class="stat-label">Needs Review / Failed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-purple">1/1</div>
+                <div class="stat-label">Exercises Proven</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-blue">8330%</div>
+                <div class="stat-label">Mutation Score</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-green">5/5</div>
+                <div class="stat-label">QA Checks Passed</div>
+            </div>
+        </div>
+
+        <!-- Section 1: Snippet Verification Table -->
+        <section>
+            <div class="section-header">
+                <h2 class="section-title">1. Code Snippet Sandbox Verification</h2>
+                <div>Total: 3 Snippets</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 120px;">Slide & ID</th>
+                        <th style="width: 130px;">Status</th>
+                        <th style="width: 90px;">Duration</th>
+                        <th>Execution Logs & Command</th>
+                        <th>Real Output vs Expected</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>Slide 2</strong><br>
+                            <span style="font-size: 11px; color: var(--text-muted);">snip_test_e2</span><br>
+                            <span style="font-size: 11px; color: #60a5fa;">java 21</span>
+                            <br><span style="font-size: 11px; color: var(--text-muted);">Backend: isolated_local_subprocess</span>
+                            
+                        </td>
+                        <td><span class="badge badge-low-assurance">Low Assurance ⚠</span></td>
+                        <td style="color: var(--text-muted); font-size: 13px;">472.292423248291ms</td>
+                        <td>
+                            <div class="cmd-box">$ javac -Xlint:deprecation,removal Main.java &amp;&amp; java -ea Main</div>
+                            
+                            
+                        </td>
+                        <td>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">Captured stdout:</div>
+                            <div class="output-box">Spring Boot 3 Web Endpoint Initialized</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>Slide 3</strong><br>
+                            <span style="font-size: 11px; color: var(--text-muted);">snip_test_e2</span><br>
+                            <span style="font-size: 11px; color: #60a5fa;">java 21</span>
+                            <br><span style="font-size: 11px; color: var(--text-muted);">Backend: isolated_local_subprocess</span>
+                            
+                        </td>
+                        <td><span class="badge badge-healed">Auto-Healed ⚡</span></td>
+                        <td style="color: var(--text-muted); font-size: 13px;">519.2675590515137ms</td>
+                        <td>
+                            <div class="cmd-box">$ javac -Xlint:deprecation,removal Main.java &amp;&amp; java -ea Main</div>
+                            
+                            
+                    <details style="margin-top: 8px;">
+                        <summary style="cursor: pointer; color: #fbbf24; font-size: 12px; font-weight: 600;">View Auto-Healing Diff (Attempt 1)</summary>
+                        <div class="diff-container"><span class="diff-meta">--- before_attempt_1_snip_test_e2e_b27b83_3_2.code</span><span class="diff-meta">+++ after_attempt_1_snip_test_e2e_b27b83_3_2.code</span><span class="diff-meta">@@ -1 +1,7 @@</span><span class="diff-removed">-System.out.println(&quot;Java 21 Virtual Thread Running&quot;)</span><span class="diff-added">+import java.util.*;</span><span class="diff-added">+</span><span class="diff-added">+public class Main {</span><span class="diff-added">+    public static void main(String[] args) {</span><span class="diff-added">+        System.out.println(&quot;Java 21 Virtual Thread Running&quot;);</span><span class="diff-added">+    }</span><span class="diff-added">+}</span></div>
+                    </details>
+                    
+                        </td>
+                        <td>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">Captured stdout:</div>
+                            <div class="output-box">Java 21 Virtual Thread Running
+</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>Slide 4</strong><br>
+                            <span style="font-size: 11px; color: var(--text-muted);">snip_test_e2</span><br>
+                            <span style="font-size: 11px; color: #60a5fa;">java 21</span>
+                            <br><span style="font-size: 11px; color: var(--text-muted);">Backend: isolated_local_subprocess</span>
+                            
+                        </td>
+                        <td><span class="badge badge-low-assurance">Low Assurance ⚠</span></td>
+                        <td style="color: var(--text-muted); font-size: 13px;">465.6949043273926ms</td>
+                        <td>
+                            <div class="cmd-box">$ javac -Xlint:deprecation,removal Main.java &amp;&amp; java -ea Main</div>
+                            
+                            
+                        </td>
+                        <td>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">Captured stdout:</div>
+                            <div class="output-box">Exercise Starter Code</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Section 2: Exercise Proofs & Mutation Testing -->
+        <section>
+            <div class="section-header">
+                <h2 class="section-title">2. Exercise Proof & Mutation Score Matrix</h2>
+                <div>Proven: 1/1 Exercises</div>
+            </div>
+                <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div>
+                            <strong style="font-size: 16px;">Slide 4 Exercise: LAB-JAVA21-01</strong>
+                        </div>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <span class="badge badge-verified">Ref: PASS ✔</span>
+                            <span class="badge badge-failed">Naive: FAIL ✖</span>
+                            <span class="badge badge-deck">Mutation Score: 8330% (5/6 killed)</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+                        <strong>Problem Statement:</strong> Implement a high-performance solution for Scoped Values vs ThreadLocal.
+                    </div>
+                    <table class="matrix-table" style="background: var(--bg-secondary); border-radius: 8px; overflow: hidden;">
+                        <thead>
+                            <tr><th>Test Suite</th><th>Reference Sol (Pass)</th><th>Naive Sol (Fail)</th><th>Mutant Mutant-1</th><th>Mutant Mutant-2</th><th>Mutant Mutant-3</th><th>Mutant Mutant-4</th><th>Mutant Mutant-5</th><th>Mutant Mutant-6</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Unit Test Suite Verification</td>
+                                <td><span class="cell-pass">PASS</span></td>
+                                <td><span class="cell-fail">FAIL</span></td><td><span class="cell-pass">KILLED</span></td><td><span class="cell-pass">KILLED</span></td><td><span class="cell-fail">SURVIVED</span></td><td><span class="cell-pass">KILLED</span></td><td><span class="cell-pass">KILLED</span></td><td><span class="cell-pass">KILLED</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+        </section>
+
+        <!-- Section 3: Non-Code Reviewer Findings -->
+        <section>
+            <div class="section-header">
+                <h2 class="section-title">3. Content Review & Factual Verification Pass</h2>
+                <div>Auto-Fixed: 0 / 0 findings</div>
+            </div><div style="color: #34d399; font-size: 14px;">✔ All slides passed factual accuracy, claim consistency, and bullet word limit rules (max 5 bullets, max 8 words/bullet).</div>
+        </section>
+
+        <!-- Section 4: Template Compliance QA -->
+        <section>
+            <div class="section-header">
+                <h2 class="section-title">4. Template Compliance & Safe-Zone QA</h2>
+                <div>Passed: 5/5 Slides</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Slide</th>
+                        <th style="width: 140px;">Status</th>
+                        <th>Compliance Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Slide 1</strong></td>
+                        <td><span class="badge badge-verified">COMPLIANT ✔</span></td>
+                        <td style="font-size: 13px; color: var(--text-muted);">All elements inside safe zones; zero overlaps; minimum font sizes respected (≥24pt body, ≥18pt code); Presented By once on Cover.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Slide 2</strong></td>
+                        <td><span class="badge badge-verified">COMPLIANT ✔</span></td>
+                        <td style="font-size: 13px; color: var(--text-muted);">All elements inside safe zones; zero overlaps; minimum font sizes respected (≥24pt body, ≥18pt code); Presented By once on Cover.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Slide 3</strong></td>
+                        <td><span class="badge badge-verified">COMPLIANT ✔</span></td>
+                        <td style="font-size: 13px; color: var(--text-muted);">All elements inside safe zones; zero overlaps; minimum font sizes respected (≥24pt body, ≥18pt code); Presented By once on Cover.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Slide 4</strong></td>
+                        <td><span class="badge badge-verified">COMPLIANT ✔</span></td>
+                        <td style="font-size: 13px; color: var(--text-muted);">All elements inside safe zones; zero overlaps; minimum font sizes respected (≥24pt body, ≥18pt code); Presented By once on Cover.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Slide 5</strong></td>
+                        <td><span class="badge badge-verified">COMPLIANT ✔</span></td>
+                        <td style="font-size: 13px; color: var(--text-muted);">All elements inside safe zones; zero overlaps; minimum font sizes respected (≥24pt body, ≥18pt code); Presented By once on Cover.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <footer>
+            Verified Course Material Studio &bull; Generated on 2026-10-17 05:21:44 &bull; Pinned Tech: Java 21
+        </footer>
+    </div>
+</body>
+</html>

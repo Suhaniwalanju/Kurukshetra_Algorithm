@@ -25,6 +25,7 @@ class RunResult:
     artifacts: Dict[str, Any] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
     deprecations: List[str] = field(default_factory=list)
+    was_wrapped: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -38,6 +39,7 @@ class RunResult:
             "artifacts": self.artifacts,
             "warnings": self.warnings,
             "deprecations": self.deprecations,
+            "was_wrapped": self.was_wrapped,
         }
 
 

@@ -173,17 +173,30 @@ class SlideRenderer:
                     c_x = (1920 - c_w) // 2
                     draw.text((c_x, box.top + 5), center_text, fill=(71, 85, 105), font=center_font)
 
-                # Right footer: Verified Badge
+                # Right footer: Verified or Unverified Badge (None if no code)
                 if slide.verification_badge:
                     badge_font = get_font(config.fonts.code, 11)
-                    badge_text = f"✓ {slide.verification_badge}"
-                    bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
+                    raw_badge = slide.verification_badge.strip()
+                    is_unverified = "unverified" in raw_badge.lower()
+
+                    if is_unverified:
+                        badge_label = f"⚠ {raw_badge}" if "⚠" not in raw_badge else raw_badge
+                        pill_fill = (254, 242, 242)
+                        pill_outline = (239, 68, 68)
+                        pill_text_color = (185, 28, 28)
+                    else:
+                        badge_label = raw_badge if ("✔" in raw_badge or "✓" in raw_badge) else f"✓ {raw_badge}"
+                        pill_fill = (240, 253, 244)
+                        pill_outline = (34, 197, 94)
+                        pill_text_color = (22, 101, 52)
+
+                    bbox = draw.textbbox((0, 0), badge_label, font=badge_font)
                     bw = bbox[2] - bbox[0] + 20
                     bh = bbox[3] - bbox[1] + 10
                     bx = box.right - bw - 10
                     by = box.top + 2
-                    draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=6, fill=(240, 253, 244), outline=(34, 197, 94), width=1)
-                    draw.text((bx + 10, by + 4), badge_text, fill=(22, 101, 52), font=badge_font)
+                    draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=6, fill=pill_fill, outline=pill_outline, width=1)
+                    draw.text((bx + 10, by + 4), badge_label, fill=pill_text_color, font=badge_font)
 
             elif box.element_type == "bullets":
                 # Subtle modern card for bullets
@@ -255,6 +268,18 @@ class SlideRenderer:
                 ty = box.top + 10
                 draw.rounded_rectangle([tx, ty, tx + tw, ty + th], radius=6, fill=(30, 41, 59), outline=(51, 65, 85), width=1)
                 draw.text((tx + 8, ty + 3), tag_text, fill=(96, 165, 250), font=tag_font)
+
+                # Imports omitted badge if fragment was wrapped
+                if getattr(slide, "imports_omitted", False):
+                    note_font = get_font(config.fonts.code, 11)
+                    note_text = "* imports omitted"
+                    n_bbox = draw.textbbox((0, 0), note_text, font=note_font)
+                    nw = n_bbox[2] - n_bbox[0] + 16
+                    nh = n_bbox[3] - n_bbox[1] + 8
+                    nx = tx - nw - 10
+                    ny = box.top + 10
+                    draw.rounded_rectangle([nx, ny, nx + nw, ny + nh], radius=6, fill=(88, 28, 135, 200), outline=(168, 85, 247), width=1)
+                    draw.text((nx + 8, ny + 3), note_text, fill=(216, 180, 254), font=note_font)
 
                 # Header Divider
                 draw.line([box.left, box.top + 36, box.right, box.top + 36], fill=(30, 41, 59), width=1)

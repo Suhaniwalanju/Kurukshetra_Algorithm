@@ -138,12 +138,19 @@ export default function VerificationDashboard({
         desc: 'Verification not yet executed.',
       };
     }
-    const { needs_review_snippets, failed_snippets, auto_healed_snippets, verified_snippets, total_snippets } = report.summary;
+    const { needs_review_snippets, failed_snippets, auto_healed_snippets, verified_low_assurance_snippets, verified_snippets, total_snippets } = report.summary;
     if (needs_review_snippets > 0 || failed_snippets > 0) {
       return {
         label: 'NEEDS REVIEW (RED)',
         color: 'bg-red-500/10 text-red-500 border-red-500/30',
         desc: `${needs_review_snippets + failed_snippets} snippet(s) require professor attention.`,
+      };
+    }
+    if ((verified_low_assurance_snippets || 0) > 0) {
+      return {
+        label: 'LOW ASSURANCE (AMBER)',
+        color: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
+        desc: `${verified_low_assurance_snippets} snippet(s) ran using fallback process backend, not isolated Docker.`,
       };
     }
     if (auto_healed_snippets > 0) {
@@ -156,7 +163,7 @@ export default function VerificationDashboard({
     return {
       label: 'FULLY VERIFIED (GREEN)',
       color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
-      desc: `All ${verified_snippets} snippets and exercises executed cleanly in sandbox.`,
+      desc: `All ${verified_snippets} snippets and exercises executed cleanly in Docker sandbox.`,
     };
   };
 
@@ -392,13 +399,22 @@ export default function VerificationDashboard({
                       Slide {snip.slide_id}
                     </td>
                     <td className="py-3 px-3">
-                      <span className="font-mono text-[11px] text-blue-400">{snip.language} {snip.version}</span>
+                      <span className="font-mono text-[11px] text-blue-400">{snip.language} {snip.real_runtime_version || snip.version}</span>
+                      {snip.sandbox_backend && (
+                        <span className="block text-[10px] text-slate-500">[{snip.sandbox_backend}]</span>
+                      )}
                     </td>
                     <td className="py-3 px-3">
                       {snip.status === 'verified' && (
                         <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           <CheckCircle2 className="w-3 h-3" />
                           <span>Verified</span>
+                        </span>
+                      )}
+                      {snip.status === 'verified_low_assurance' && (
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Low Assurance</span>
                         </span>
                       )}
                       {snip.status === 'auto_healed' && (

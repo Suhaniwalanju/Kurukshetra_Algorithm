@@ -31,6 +31,11 @@ class OutputInjector:
         snippet.wrapped_code = exec_result.wrapped_code
         snippet.deprecation_level = exec_result.deprecation_level
         snippet.deprecation_details = exec_result.deprecation_details
+        snippet.sandbox_backend = getattr(exec_result, "sandbox_backend", "docker")
+        snippet.real_runtime_version = getattr(exec_result, "real_runtime_version", "")
+        snippet.image_digest = getattr(exec_result, "image_digest", "")
+        snippet.classification = getattr(exec_result, "classification", "PASS")
+        snippet.was_wrapped = getattr(exec_result, "was_wrapped", False)
 
         # Check for mismatch
         def clean_val(v: str) -> str:
@@ -54,8 +59,12 @@ class OutputInjector:
             if exec_result.deprecation_level == "removal":
                 snippet.status = "failed"
                 note += " (Failed: Deprecation marked for removal)"
-            else:
+            elif getattr(exec_result, "sandbox_backend", "") == "docker":
                 snippet.status = "verified"
+            else:
+                # If the fallback process backend was used, set status to verified_low_assurance
+                snippet.status = "verified_low_assurance"
+                note += " (Verified Low Assurance: Executed via local fallback process)"
         else:
             snippet.status = "failed"
             note = f"Execution failed with exit code {exec_result.exit_code}"
@@ -69,6 +78,23 @@ class OutputInjector:
                         slide["code"]["expected_output"] = actual
                     elif exec_result.exit_code == 0:
                         slide["code"]["expected_output"] = "Execution successful"
+
+                # If snippet was wrapped, record imports_omitted note on slide and store full runnable version in trainer notes
+                if snippet.was_wrapped:
+                    slide["imports_omitted"] = True
+                    slide["imports_omitted_note"] = "imports omitted"
+                    full_runnable = (exec_result.wrapped_code or snippet.wrapped_code or "").strip()
+                    runnable_section = f"Full runnable version (with imports):\n{full_runnable}"
+
+                    existing_trainer = slide.get("trainer_notes", "") or ""
+                    if full_runnable and full_runnable not in existing_trainer:
+                        slide["trainer_notes"] = f"{existing_trainer}\n\n{runnable_section}".strip()
+                    elif not existing_trainer and full_runnable:
+                        slide["trainer_notes"] = runnable_section
+
+                    existing_hint = slide.get("speaker_hint", "") or ""
+                    if "imports omitted" not in existing_hint.lower():
+                        slide["speaker_hint"] = f"{existing_hint} [imports omitted - full runnable version in trainer notes]".strip()
                 break
 
         return mismatch, note
