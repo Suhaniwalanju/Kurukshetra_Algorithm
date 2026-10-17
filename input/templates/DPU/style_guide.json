@@ -1,0 +1,120 @@
+{
+  "college": "DPU",
+  "name": "Dr. D. Y. Patil Vidyapeeth Brand Style Guide",
+  "aspect_ratio": "16:9",
+  "dimensions": {
+    "width_px": 1920,
+    "height_px": 1080,
+    "width_inches": 13.333333,
+    "height_inches": 7.5
+  },
+  "colors": {
+    "primary": "#002147",
+    "secondary": "#C0392B",
+    "accent": "#1E40AF",
+    "text": "#0F172A",
+    "background": "#FAFAFA",
+    "code_bg": "#1E1E2E",
+    "code_text": "#F8F8F2",
+    "muted": "#64748B",
+    "border": "#CBD5E1",
+    "highlight": "#38BDF8"
+  },
+  "fonts": {
+    "title": "Arial",
+    "body": "Segoe UI",
+    "code": "Consolas",
+    "min_title_size_pt": 28,
+    "min_body_size_pt": 16,
+    "min_code_size_pt": 14,
+    "max_title_size_pt": 38,
+    "max_body_size_pt": 22
+  },
+  "margins": {
+    "left_inches": 1.5,
+    "right_inches": 1.5,
+    "top_inches": 1.1,
+    "bottom_inches": 0.8,
+    "left_px": 216,
+    "right_px": 216,
+    "top_px": 150,
+    "bottom_px": 115
+  },
+  "safe_zone": {
+    "left": 216,
+    "top": 150,
+    "width": 1488,
+    "height": 820
+  },
+  "placeholders": {
+    "title": {
+      "left": 216,
+      "top": 150,
+      "width": 1488,
+      "height": 100
+    },
+    "body": {
+      "left": 216,
+      "top": 270,
+      "width": 1488,
+      "height": 680
+    },
+    "split_left": {
+      "left": 216,
+      "top": 270,
+      "width": 720,
+      "height": 680
+    },
+    "split_right": {
+      "left": 960,
+      "top": 270,
+      "width": 744,
+      "height": 680
+    },
+    "footer": {
+      "left": 216,
+      "top": 980,
+      "width": 1400,
+      "height": 45
+    },
+    "slide_number": {
+      "left": 1640,
+      "top": 980,
+      "width": 150,
+      "height": 45
+    }
+  },
+  "footer": {
+    "text": "Dr. D. Y. Patil Vidyapeeth, Pune (Deemed to be University)",
+    "font": "Segoe UI",
+    "font_size_pt": 10,
+    "color": "#64748B"
+  },
+  "logo": {
+    "path": "input/templates/DPU/dpu_logo.png",
+    "left_px": 50,
+    "top_px": 30,
+    "width_px": 380,
+    "height_px": 95
+  },
+  "code_blocks": {
+    "font": "Consolas",
+    "font_size_pt": 14,
+    "max_lines": 14,
+    "max_columns": 60,
+    "bg_color": "#1E1E2E",
+    "text_color": "#F8F8F2",
+    "padding_px": 16,
+    "border_color": "#334155"
+  },
+  "diagrams": {
+    "max_nodes": 7,
+    "max_label_words": 3,
+    "resolution_scale": 2.0,
+    "min_font_pt": 16,
+    "font": "Segoe UI",
+    "node_bg": "#002147",
+    "node_text": "#FFFFFF",
+    "edge_color": "#64748B"
+  }
+}

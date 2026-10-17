@@ -3,54 +3,93 @@
   "slide_width": 1920,
   "slide_height": 1080,
   "aspect_ratio": "16:9",
-  "template_image_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\backend\\template_configs\\DPU_background.png",
+  "template_image_path": "c:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\input\\templates\\DPU\\DPU_Brand_template.png",
+  "template_pptx_path": "c:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\input\\templates\\DPU\\DPU_Template.pptx",
+  "logo_path": "c:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\input\\templates\\DPU\\dpu_logo.png",
+  "style_guide_path": "c:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\input\\templates\\DPU\\style_guide.json",
   "title_zone": {
-    "left": 312,
+    "left": 216,
     "top": 150,
-    "width": 1296,
+    "width": 1488,
     "height": 100
   },
   "content_zone": {
-    "left": 312,
-    "top": 275,
-    "width": 1296,
+    "left": 216,
+    "top": 270,
+    "width": 1488,
     "height": 680
   },
   "code_zone": {
-    "left": 312,
-    "top": 275,
-    "width": 628,
+    "left": 216,
+    "top": 270,
+    "width": 720,
     "height": 680
   },
   "diagram_zone": {
-    "left": 980,
-    "top": 275,
-    "width": 628,
+    "left": 960,
+    "top": 270,
+    "width": 744,
     "height": 680
   },
   "footer_zone": {
-    "left": 312,
-    "top": 960,
-    "width": 1296,
+    "left": 216,
+    "top": 980,
+    "width": 1400,
+    "height": 45
+  },
+  "slide_number_zone": {
+    "left": 1640,
+    "top": 980,
+    "width": 150,
     "height": 45
   },
   "presented_by_zone": {
-    "left": 352,
-    "top": 875,
-    "width": 1216,
+    "left": 216,
+    "top": 850,
+    "width": 1488,
     "height": 80
   },
   "colors": {
     "primary": "#002147",
-    "secondary": "#00132A",
+    "secondary": "#C0392B",
+    "accent": "#1E40AF",
     "text": "#0F172A",
     "background": "#FAFAFA",
     "code_bg": "#1E1E2E",
-    "code_text": "#F8F8F2"
+    "code_text": "#F8F8F2",
+    "muted": "#64748B",
+    "border": "#CBD5E1",
+    "highlight": "#38BDF8"
   },
   "fonts": {
     "title": "Arial",
     "body": "Segoe UI",
-    "code": "Consolas"
+    "code": "Consolas",
+    "min_title_size_pt": 28,
+    "min_body_size_pt": 16,
+    "min_code_size_pt": 14,
+    "max_title_size_pt": 38,
+    "max_body_size_pt": 22
+  },
+  "footer": {
+    "text": "Dr. D. Y. Patil Vidyapeeth, Pune (Deemed to be University)",
+    "font": "Segoe UI",
+    "font_size_pt": 10,
+    "color": "#64748B"
+  },
+  "code_blocks": {
+    "font": "Consolas",
+    "font_size_pt": 14,
+    "max_lines": 14,
+    "max_columns": 60,
+    "bg_color": "#1E1E2E",
+    "text_color": "#F8F8F2",
+    "padding_px": 16
+  },
+  "diagrams": {
+    "max_nodes": 7,
+    "max_label_words": 3,
+    "resolution_scale": 2.0,
+    "min_font_pt": 16
   }
 }

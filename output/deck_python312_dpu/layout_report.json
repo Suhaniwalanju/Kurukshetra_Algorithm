@@ -1,0 +1,55 @@
+{
+  "deck_id": "deck_python312_dpu",
+  "topic": "Python 3.12 Asynchronous Concurrency",
+  "college": "DPU",
+  "pptx_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\output\\deck_python312_dpu\\deck_python312_dpu.pptx",
+  "pdf_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\output\\deck_python312_dpu\\deck_python312_dpu.pdf",
+  "pdf_page_count": 4,
+  "total_slides": 4,
+  "total_defects": 0,
+  "status": "PASSED",
+  "defects_by_type": {
+    "INVALID_LAYOUT": 0,
+    "MARGIN_OVERFLOW": 0,
+    "FONT_TOO_SMALL": 0,
+    "INVALID_FONT": 0,
+    "MISSING_LOGO": 0,
+    "MISSING_FOOTER": 0,
+    "MISSING_DIAGRAM": 0,
+    "CODE_OVERFLOW": 0
+  },
+  "slides": [
+    {
+      "slide_number": 1,
+      "title": "Python 3.12 Asynchronous Concurrency",
+      "layout": "Title Slide",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 2,
+      "title": "Structured Concurrency with TaskGroup",
+      "layout": "Two Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 3,
+      "title": "AsyncIO Event Loop Workflow",
+      "layout": "Two Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 4,
+      "title": "Best Practices in AsyncIO Systems",
+      "layout": "Title and Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    }
+  ]
+}

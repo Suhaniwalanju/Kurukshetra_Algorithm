@@ -1,0 +1,59 @@
+{
+  "deck_id": "test",
+  "topic": "Python",
+  "college": "DPU",
+  "pptx_path": "output/test_notes_single_slide_deck/Python_Scripting_Python.pptx",
+  "pdf_path": "output/test_notes_single_slide_deck/Python_Scripting_Python.pdf",
+  "pdf_page_count": 3,
+  "total_slides": 3,
+  "total_defects": 9,
+  "status": "FAILED",
+  "defects_by_type": {
+    "INVALID_LAYOUT": 0,
+    "MARGIN_OVERFLOW": 0,
+    "FONT_TOO_SMALL": 3,
+    "INVALID_FONT": 0,
+    "MISSING_LOGO": 3,
+    "MISSING_FOOTER": 3,
+    "MISSING_DIAGRAM": 0,
+    "CODE_OVERFLOW": 0
+  },
+  "slides": [
+    {
+      "slide_number": 1,
+      "title": "Slide 1",
+      "layout": "Blank",
+      "defect_count": 2,
+      "defects": [
+        "DPU Logo is missing from slide.",
+        "Footer or slide number placeholder is missing or unpopulated."
+      ],
+      "status": "FAIL"
+    },
+    {
+      "slide_number": 2,
+      "title": "Slide 2",
+      "layout": "Blank",
+      "defect_count": 4,
+      "defects": [
+        "Body font size 12.0pt is below minimum 14.0pt.",
+        "Code font size 12.0pt is below minimum 14.0pt.",
+        "DPU Logo is missing from slide.",
+        "Footer or slide number placeholder is missing or unpopulated."
+      ],
+      "status": "FAIL"
+    },
+    {
+      "slide_number": 3,
+      "title": "Slide 3",
+      "layout": "Blank",
+      "defect_count": 3,
+      "defects": [
+        "Body font size 12.0pt is below minimum 14.0pt.",
+        "DPU Logo is missing from slide.",
+        "Footer or slide number placeholder is missing or unpopulated."
+      ],
+      "status": "FAIL"
+    }
+  ]
+}

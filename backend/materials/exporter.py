@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import json
 import zipfile
 import pypdf
@@ -24,9 +25,22 @@ from backend.materials.models import StudentNote, ProfessorNote, QuizQuestion
 from backend.template_registry import template_registry
 
 
-def export_deck_pdf(preview_paths: list, output_pdf_path: str) -> str:
-    """Combines rendered 1080p slide PNGs into a 16:9 presentation PDF."""
+from backend.code_renderer import render_code_block, render_code_block_reportlab_table
+from backend.pdf_converter import convert_pptx_to_pdf
+
+
+def export_deck_pdf(preview_paths: list, output_pdf_path: str, pptx_path: str = None) -> str:
+    """
+    Exports presentation PDF by converting the generated PPTX (e.g., via LibreOffice or PowerPoint COM),
+    ensuring the PDF and PPTX match exactly. Falls back to slide PNG previews if needed.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(output_pdf_path)), exist_ok=True)
+
+    if pptx_path and os.path.exists(pptx_path):
+        converted = convert_pptx_to_pdf(pptx_path, output_pdf_path)
+        if converted and os.path.exists(output_pdf_path) and os.path.getsize(output_pdf_path) > 0:
+            return output_pdf_path
+
     images = []
     for p in preview_paths:
         abs_p = p
@@ -51,19 +65,23 @@ def export_deck_pdf(preview_paths: list, output_pdf_path: str) -> str:
 
 
 def export_student_notes_pdf(deck: Dict[str, Any], notes: list, output_pdf_path: str) -> str:
-    """Generates a structured Student Notes PDF document."""
+    """Generates a structured Student Notes PDF document using shared render_code_block."""
     os.makedirs(os.path.dirname(os.path.abspath(output_pdf_path)), exist_ok=True)
     doc = SimpleDocTemplate(output_pdf_path, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
 
-    primary_col = colors.HexColor("#1E3A8A")
+    tmpl = template_registry.get_config(deck.get("college", "DPU"))
+    primary_hex = getattr(tmpl.colors, "primary", "#002147") if tmpl and hasattr(tmpl, "colors") else "#002147"
+    secondary_hex = getattr(tmpl.colors, "secondary", "#002147") if tmpl and hasattr(tmpl, "colors") else "#002147"
+    primary_col = colors.HexColor(primary_hex)
+
     title_style = ParagraphStyle('NotesTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=18, leading=22, textColor=primary_col)
     h2_style = ParagraphStyle('NotesH2', fontName='Helvetica-Bold', fontSize=12, leading=15, textColor=primary_col)
     body_style = ParagraphStyle('NotesBody', fontName='Helvetica', fontSize=9, leading=12, textColor=colors.HexColor("#1E293B"))
-    code_style = ParagraphStyle('NotesCode', fontName='Courier', fontSize=7.5, leading=9.5, textColor=colors.HexColor("#22C55E"))
+    code_out_style = ParagraphStyle('NotesCodeOut', fontName='Courier', fontSize=8, leading=10, textColor=colors.HexColor("#0284C7"))
 
     story = [
-        Paragraph(f"<b>STUDENT COURSE NOTES</b>", ParagraphStyle('TopTag', fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor("#0D9488"))),
+        Paragraph(f"<b>STUDENT COURSE NOTES</b>", ParagraphStyle('TopTag', fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor(secondary_hex))),
         Paragraph(f"<b>{deck.get('topic', 'Programming Topic')}</b>", title_style),
         Paragraph(f"Professor: {deck.get('professor_name', '')} • College: {deck.get('college', '')} • Stack: {deck.get('tech', '')} {deck.get('tech_version', '')}", body_style),
         Spacer(1, 12),
@@ -84,20 +102,20 @@ def export_student_notes_pdf(deck: Dict[str, Any], notes: list, output_pdf_path:
         ]
 
         if n.get('verified_code'):
-            code_block = [
-                Paragraph(f"<b>Verified Code:</b><br/>{n.get('verified_code').replace(chr(10), '<br/>')}", code_style),
-                Paragraph(f"<b>Captured Output:</b><br/><font color='#38BDF8'>{n.get('real_output', 'Executed cleanly').replace(chr(10), '<br/>')}</font>", code_style)
-            ]
-            t = Table([code_block], colWidths=[510], style=[
-                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#0F172A")),
-                ('TOPPADDING', (0,0), (-1,-1), 6),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-                ('LEFTPADDING', (0,0), (-1,-1), 8),
-                ('RIGHTPADDING', (0,0), (-1,-1), 8),
-                ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#334155")),
-            ])
+            code_palette = tmpl.colors.model_dump() if tmpl and hasattr(tmpl, "colors") else None
+            t = render_code_block_reportlab_table(
+                code=n.get('verified_code'),
+                language=deck.get('tech', 'text'),
+                palette=code_palette,
+                width=510,
+                font_size_pt=14,
+            )
             slide_card.append(Spacer(1, 4))
             slide_card.append(t)
+            if n.get('real_output'):
+                out_p = Paragraph(f"<b>Captured Output:</b><br/>{n.get('real_output').replace(chr(10), '<br/>')}", code_out_style)
+                slide_card.append(Spacer(1, 3))
+                slide_card.append(out_p)
 
         slide_card.append(Spacer(1, 14))
         story.append(KeepTogether(slide_card))
@@ -112,7 +130,9 @@ def export_quiz_pdf(deck: Dict[str, Any], quiz: list, output_pdf_path: str, incl
     doc = SimpleDocTemplate(output_pdf_path, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
 
-    primary_col = colors.HexColor("#1E3A8A")
+    tmpl = template_registry.get_config(deck.get("college", "DPU"))
+    primary_hex = getattr(tmpl.colors, "primary", "#002147") if tmpl and hasattr(tmpl, "colors") else "#002147"
+    primary_col = colors.HexColor(primary_hex)
     title_suffix = "INSTRUCTOR ANSWER KEY" if include_answers else "STUDENT EXAM COPY"
     title_style = ParagraphStyle('QTitle', fontName='Helvetica-Bold', fontSize=16, leading=19, textColor=primary_col)
     q_num_style = ParagraphStyle('QNum', fontName='Helvetica-Bold', fontSize=10, leading=12, textColor=primary_col)
@@ -129,19 +149,24 @@ def export_quiz_pdf(deck: Dict[str, Any], quiz: list, output_pdf_path: str, incl
 
     for q in quiz:
         item = q if isinstance(q, dict) else q.model_dump()
+        q_text = item.get('question', '')
+        # Format inline backticks if any
+        if "`" in q_text:
+            q_text = re.sub(r"`([^`]+)`", r"<font face='Courier' color='#C678DD'><b>\1</b></font>", q_text)
         q_elements = [
-            Paragraph(f"<b>Q{item.get('id', 1)}. {item.get('question', '')}</b>", q_num_style),
+            Paragraph(f"<b>Q{item.get('id', 1)}. {q_text}</b>", q_num_style),
             Spacer(1, 3)
         ]
 
         if item.get("code_snippet"):
-            c_table = Table([[Paragraph(item.get("code_snippet").replace(chr(10), '<br/>'), code_style)]], colWidths=[510], style=[
-                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F1F5F9")),
-                ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
-                ('TOPPADDING', (0,0), (-1,-1), 4),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                ('LEFTPADDING', (0,0), (-1,-1), 6),
-            ])
+            code_palette = tmpl.colors.model_dump() if tmpl and hasattr(tmpl, "colors") else None
+            c_table = render_code_block_reportlab_table(
+                code=item.get("code_snippet"),
+                language=deck.get("tech", "text"),
+                palette=code_palette,
+                width=510,
+                font_size_pt=14
+            )
             q_elements.append(c_table)
             q_elements.append(Spacer(1, 4))
 
@@ -150,7 +175,12 @@ def export_quiz_pdf(deck: Dict[str, Any], quiz: list, output_pdf_path: str, incl
             is_correct = include_answers and opt.startswith(item.get("correct_answer", ""))
             opt_color = "#15803D" if is_correct else "#1E293B"
             prefix = "<b>[CORRECT] </b>" if is_correct else ""
-            q_elements.append(Paragraph(f"<font color='{opt_color}'>{prefix}{opt}</font>", body_style))
+            opt_text = opt
+            if "`" in opt_text:
+                opt_text = re.sub(r"`([^`]+)`", r"<font face='Courier'><b>\1</b></font>", opt_text)
+            elif any(sym in opt_text for sym in ["()", "->", "::", "{", "}"]):
+                opt_text = f"<font face='Courier'>{opt_text}</font>"
+            q_elements.append(Paragraph(f"<font color='{opt_color}'>{prefix}{opt_text}</font>", body_style))
             q_elements.append(Spacer(1, 2))
 
         # Answer key explanations
@@ -290,7 +320,7 @@ def build_all_deck_exports(deck_id: str, db_session) -> Dict[str, str]:
 
     # 2. Deck.pdf
     pdf_path = os.path.join(output_dir, f"Deck_{deck_id}.pdf")
-    export_deck_pdf(deck_dict.get("preview_paths", []), pdf_path)
+    export_deck_pdf(deck_dict.get("preview_paths", []), pdf_path, pptx_path=pptx_path)
     exports["pdf"] = pdf_path
     deck_record.pdf_path = pdf_path
 

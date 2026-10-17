@@ -82,6 +82,33 @@ class TemplateRegistry:
                 with open(config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     config = TemplateLayoutConfig(**data)
+
+                    # Enrich from template folder assets if present
+                    template_folder = os.path.join(TEMPLATES_DIR, college)
+                    if os.path.exists(template_folder):
+                        for f_name in [f"{college}_Template.pptx", "template.pptx", "DPU_Template.pptx"]:
+                            cand = os.path.join(template_folder, f_name)
+                            if os.path.exists(cand):
+                                config.template_pptx_path = cand
+                                break
+
+                        for f_name in [f"{college.lower()}_logo.png", "logo.png", "dpu_logo.png"]:
+                            cand = os.path.join(template_folder, f_name)
+                            if os.path.exists(cand):
+                                config.logo_path = cand
+                                break
+
+                        style_cand = os.path.join(template_folder, "style_guide.json")
+                        if os.path.exists(style_cand):
+                            config.style_guide_path = style_cand
+                            try:
+                                with open(style_cand, "r", encoding="utf-8") as sf:
+                                    sdata = json.load(sf)
+                                    if "footer" in sdata and isinstance(sdata["footer"], dict):
+                                        config.footer_text = sdata["footer"].get("text", config.footer_text)
+                            except Exception:
+                                pass
+
                     self.templates[college] = config
                     # Generate preview overlay
                     self.generate_preview_overlay(college, config)

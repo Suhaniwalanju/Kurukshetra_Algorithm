@@ -107,6 +107,7 @@ class TemplateColors(BaseModel):
     background: str = "#FFFFFF"
     code_bg: str = "#1E1E2E"
     code_text: str = "#F8F8F2"
+    muted: str = "#64748B"
 
 
 class TemplateFonts(BaseModel):
@@ -121,6 +122,10 @@ class TemplateLayoutConfig(BaseModel):
     slide_height: int = 1080
     aspect_ratio: str = "16:9"
     template_image_path: str
+    template_pptx_path: Optional[str] = None
+    logo_path: Optional[str] = None
+    style_guide_path: Optional[str] = None
+    footer_text: Optional[str] = None
     title_zone: BoundingBox
     content_zone: BoundingBox
     code_zone: BoundingBox

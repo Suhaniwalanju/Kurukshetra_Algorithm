@@ -1,0 +1,55 @@
+{
+  "deck_id": "deck_cpp17_dpu",
+  "topic": "Modern C++17 Smart Pointers & Memory Management",
+  "college": "DPU",
+  "pptx_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\output\\deck_cpp17_dpu\\deck_cpp17_dpu.pptx",
+  "pdf_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\output\\deck_cpp17_dpu\\deck_cpp17_dpu.pdf",
+  "pdf_page_count": 4,
+  "total_slides": 4,
+  "total_defects": 0,
+  "status": "PASSED",
+  "defects_by_type": {
+    "INVALID_LAYOUT": 0,
+    "MARGIN_OVERFLOW": 0,
+    "FONT_TOO_SMALL": 0,
+    "INVALID_FONT": 0,
+    "MISSING_LOGO": 0,
+    "MISSING_FOOTER": 0,
+    "MISSING_DIAGRAM": 0,
+    "CODE_OVERFLOW": 0
+  },
+  "slides": [
+    {
+      "slide_number": 1,
+      "title": "Modern C++17 Smart Pointers & Memory",
+      "layout": "Title Slide",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 2,
+      "title": "Unique Pointer & Move Semantics",
+      "layout": "Two Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 3,
+      "title": "Shared Pointer Control Block Architecture",
+      "layout": "Two Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    },
+    {
+      "slide_number": 4,
+      "title": "Modern C++ Memory Safety Rules",
+      "layout": "Title and Content",
+      "defect_count": 0,
+      "defects": [],
+      "status": "PASS"
+    }
+  ]
+}
