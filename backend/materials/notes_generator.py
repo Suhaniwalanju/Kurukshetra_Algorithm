@@ -1,10 +1,14 @@
 import json
 import re
+import logging
 from typing import List, Dict, Any, Tuple, Optional, Union
+from sqlalchemy.orm import Session
 from backend.materials.models import StudentNote, ProfessorNote
 from backend.materials.student_mistake_predictor import generate_predicted_mistakes
 from backend.materials.topic_retriever import topic_retriever
 from backend.runtimes.registry import runtime_registry
+
+logger = logging.getLogger(__name__)
 
 
 def validate_timing(notes: List[Dict[str, Any]], session_length: float) -> Tuple[bool, float, str]:
@@ -77,6 +81,8 @@ def generate_notes_for_slide(
     target_timing: float = 3.0,
     session_length: float = 45.0,
     retrieved_chunks: Optional[List[str]] = None,
+    deck_id: str = "",
+    db_session: Optional[Session] = None,
 ) -> Dict[str, Any]:
     """
     Produces JSON notes for a single slide:
@@ -93,6 +99,29 @@ def generate_notes_for_slide(
     slide_type = slide_dict.get("type", "concept")
     bullets = slide_dict.get("bullets", [])
 
+    # Retrieve factual topic chunks
+    if retrieved_chunks is None:
+        retrieved_chunks = topic_retriever.retrieve_chunks_for_slide(slide_dict, topic, tech, top_k=4)
+
+    # For concept slides: generate one complete runnable example file matching topic runtime and pinned version,
+    # with its own imports, link by code_ref, send through verifier and healing loop, and store exact executed source.
+    concept_ex_data = None
+    if slide_type == "concept":
+        try:
+            from backend.materials.concept_examples import process_concept_slide_example
+            concept_ex_data = process_concept_slide_example(
+                slide=slide,
+                deck_id=deck_id,
+                topic=topic,
+                tech=tech,
+                tech_version=tech_version,
+                retrieved_chunks=retrieved_chunks,
+                db_session=db_session,
+            )
+            slide_dict = slide if isinstance(slide, dict) else slide.model_dump()
+        except Exception as e:
+            logger.warning(f"Error processing concept slide example: {e}")
+
     code = ""
     c = slide_dict.get("code")
     if isinstance(c, dict):
@@ -101,10 +130,6 @@ def generate_notes_for_slide(
         code = c.source
     elif isinstance(c, str):
         code = c
-
-    # Retrieve factual topic chunks
-    if retrieved_chunks is None:
-        retrieved_chunks = topic_retriever.retrieve_chunks_for_slide(slide_dict, topic, tech, top_k=4)
 
     chunks_text = "\n---\n".join(retrieved_chunks) if retrieved_chunks else "No specific external topic chunks retrieved."
 
@@ -154,6 +179,7 @@ Output JSON with this exact schema:
         tech=tech,
         target_timing=target_timing,
         retrieved_chunks=retrieved_chunks,
+        concept_ex_data=concept_ex_data,
     )
 
 
@@ -164,6 +190,7 @@ def _sanitize_and_fallback_notes(
     tech: str,
     target_timing: float,
     retrieved_chunks: Optional[List[str]],
+    concept_ex_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Ensures structure adheres strictly to requirements and factual topic chunks."""
     title = slide_dict.get("title", "Concept")
@@ -232,7 +259,12 @@ def _sanitize_and_fallback_notes(
         talking_points = points[:4]
 
     if not example:
-        if code:
+        if slide_type == "concept" and slide_dict.get("code_ref"):
+            example = {
+                "description": f"Complete runnable example demonstrating {title} in {tech}.",
+                "code_ref": slide_dict.get("code_ref"),
+            }
+        elif code:
             example = {
                 "description": f"Demonstrating {title} syntax and execution flow in {tech}.",
                 "code_ref": code.strip(),
@@ -264,13 +296,29 @@ def _sanitize_and_fallback_notes(
     if not ask_the_class.endswith("?"):
         ask_the_class += "?"
 
-    return {
+    if slide_type == "concept":
+        code_ref_val = slide_dict.get("code_ref") or (concept_ex_data.get("code_ref") if concept_ex_data else "")
+        if code_ref_val:
+            example["code_ref"] = code_ref_val
+        full_code_val = (
+            (concept_ex_data.get("executed_source") if concept_ex_data else "")
+            or (slide_dict.get("notes") or {}).get("example", {}).get("full_code")
+            or ""
+        )
+        if full_code_val:
+            example["full_code"] = full_code_val
+
+    result_notes = {
         "talking_points": talking_points[:4],
         "example": example,
         "common_mistakes": common_mistakes[:2],
         "ask_the_class": ask_the_class,
         "timing_minutes": round(timing_minutes, 1),
     }
+    if slide_type == "concept" and example.get("full_code"):
+        result_notes["full_file"] = example["full_code"]
+
+    return result_notes
 
 
 def generate_notes_for_deck_slides(
@@ -281,6 +329,8 @@ def generate_notes_for_deck_slides(
     session_length: float = 45.0,
     student_level: str = "Beginner",
     max_regeneration_attempts: int = 3,
+    deck_id: str = "",
+    db_session: Optional[Session] = None,
 ) -> List[Any]:
     """
     Generates notes per slide using only slide content and retrieved topic chunks.
@@ -300,6 +350,8 @@ def generate_notes_for_deck_slides(
                 tech_version=tech_version,
                 target_timing=t_timing,
                 session_length=session_length,
+                deck_id=deck_id,
+                db_session=db_session,
             )
             # Store notes per slide
             if isinstance(slide, dict):

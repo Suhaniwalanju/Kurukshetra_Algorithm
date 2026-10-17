@@ -83,6 +83,7 @@ class VerificationCoordinator:
         self._publish_event(deck_id, "start", "Initiating verification pipeline...", 5)
 
         slides_data = json.loads(deck.slides_json)
+        topic = getattr(deck, "topic", "Course Deck") or "Course Deck"
         tech = getattr(deck, "tech", None) or getattr(deck, "tech_stack", "Java")
         version = deck.tech_version or "21"
         professor_name = deck.professor_name or "Professor"
@@ -193,27 +194,34 @@ class VerificationCoordinator:
                         snip.status = "auto_healed"
                         snip.source_code = final_code
                         if "code" in slide_obj and slide_obj["code"]:
-                            slide_obj["code"]["source"] = final_code
+                            if slide_obj.get("type") == "concept":
+                                from backend.materials.concept_examples import extract_code_excerpt
+                                slide_obj["code"]["source"] = extract_code_excerpt(final_code, snip.language)
+                                if isinstance(slide_obj.get("notes"), dict):
+                                    ex_obj = slide_obj["notes"].get("example")
+                                    if isinstance(ex_obj, dict):
+                                        ex_obj["full_code"] = final_code
+                                    slide_obj["notes"]["full_file"] = final_code
+                            else:
+                                slide_obj["code"]["source"] = final_code
                     else:
                         snip.status = "needs_review"
         db_session.commit()
         db_session.commit()
 
         # -------------------------------------------------------------
-        # STEP 5: Exercise Proof & Mutation Score
+        # STEP 5: Exercise Proof & Mutation Score (3 exercises: easy, medium, stretch)
         # -------------------------------------------------------------
-        self._publish_event(deck_id, "proving_exercise", "Proving hands-on exercises & calculating mutation score...", 70)
-        exercise_proofs = []
-        for s in slides_data:
-            if s.get("type") == "exercise" or s.get("exercise_ref"):
-                proof = self.exercise_prover.prove_exercise(
-                    deck_id=deck_id,
-                    slide=s,
-                    language=tech.lower(),
-                    version=version,
-                    db_session=db_session,
-                )
-                exercise_proofs.append(proof)
+        self._publish_event(deck_id, "proving_exercise", "Proving 3 hands-on exercises (easy, medium, stretch) & mutation score...", 70)
+        exercise_proofs = self.exercise_prover.prove_deck_exercises(
+            deck_id=deck_id,
+            topic=topic,
+            language=tech.lower(),
+            version=version,
+            slides=slides_data,
+            max_attempts=3,
+            db_session=db_session,
+        )
 
         # -------------------------------------------------------------
         # STEP 6: Non-Code Content Reviewer Pass

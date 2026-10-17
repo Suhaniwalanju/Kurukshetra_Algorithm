@@ -100,8 +100,18 @@ class SnippetExtractor:
             title = slide.get("title", "")
             code_obj = slide.get("code")
 
+            # For concept slides: prefer the complete runnable example file with its own imports
+            notes_data = slide.get("notes") or {}
+            ex_data = notes_data.get("example") if isinstance(notes_data, dict) else {}
+            full_concept_code = (
+                (ex_data.get("full_code") if isinstance(ex_data, dict) else "")
+                or (notes_data.get("full_file") if isinstance(notes_data, dict) else "")
+                or ""
+            ).strip()
+
             if code_obj and isinstance(code_obj, dict):
-                source = code_obj.get("source", "").strip()
+                slide_source = code_obj.get("source", "").strip()
+                source = full_concept_code if (slide_type == "concept" and full_concept_code) else slide_source
                 if source:
                     lang = normalize_language(code_obj.get("language") or normalized_default_lang)
                     version = code_obj.get("version") or default_version
@@ -113,7 +123,7 @@ class SnippetExtractor:
                     elif "quiz" in title.lower() or "knowledge check" in title.lower():
                         snippet_type = "quiz"
                     elif slide_type == "concept":
-                        snippet_type = "concept_code"
+                        snippet_type = "concept_example" if full_concept_code else "concept_code"
 
                     snippet_id = f"snip_{deck_id}_{slide_id}_{len(extracted) + 1}"
                     record = SnippetRecord(
@@ -127,11 +137,13 @@ class SnippetExtractor:
                         expected_output=expected_output,
                         status="pending",
                         was_executed=True,
-                        source_location="slide_code",
+                        source_location="slide_code" if not full_concept_code else "concept_example_file",
                         attempts_count=1,
                     )
                     extracted.append(record)
                     seen_codes.add(source)
+                    if slide_source:
+                        seen_codes.add(slide_source)
 
         # -------------------------------------------------------------
         # 2. Trainer Notes & Speaker Hints (fenced & inline code)

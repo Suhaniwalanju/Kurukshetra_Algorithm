@@ -32,6 +32,7 @@ from backend.slide_renderer import slide_renderer
 from backend.verifier_stub import code_verifier
 from backend.verification.coordinator import verification_coordinator
 from backend.verification.sandbox import sandbox_engine
+from backend.utils import sanitize_filename
 
 app = FastAPI(
     title="Verified Course Material Studio API",
@@ -152,6 +153,8 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
             tech_version=req.tech_version or "",
             session_length=float(req.session_length),
             student_level=req.student_level,
+            deck_id=deck_id,
+            db_session=db_session,
         )
 
         # 3. Collision-free Layout Engine with PIL text measurement & auto-splitting
@@ -170,7 +173,10 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
 
         deck_dir = os.path.join(OUTPUT_DIR, deck_id)
         os.makedirs(deck_dir, exist_ok=True)
-        pptx_path = os.path.join(deck_dir, f"{req.topic.replace(' ', '_')}_{req.tech}.pptx")
+        record.output_dir = deck_dir
+        clean_topic = sanitize_filename(req.topic)
+        clean_tech = sanitize_filename(req.tech)
+        pptx_path = os.path.join(deck_dir, f"{clean_topic}_{clean_tech}.pptx")
 
         pptx_builder.build_deck(final_slides, plans, config, req.professor_name, pptx_path)
 

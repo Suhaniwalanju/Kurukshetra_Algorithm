@@ -251,6 +251,9 @@ class ExerciseProofRecord(Base):
     id = Column(String(64), primary_key=True, index=True)
     deck_id = Column(String(64), ForeignKey("decks.id"), index=True)
     slide_id = Column(Integer, nullable=False)
+    difficulty = Column(String(32), default="medium")
+    status = Column(String(32), default="verified")  # verified, needs_review
+    attempts = Column(Integer, default=1)
     exercise_ref = Column(String(64), default="")
     problem_statement = Column(Text, default="")
     starter_code = Column(Text, default="")
@@ -287,7 +290,11 @@ class ExerciseProofRecord(Base):
             "id": self.id,
             "deck_id": self.deck_id,
             "slide_id": self.slide_id,
+            "difficulty": getattr(self, "difficulty", "medium") or "medium",
+            "status": getattr(self, "status", "verified") or "verified",
+            "attempts": getattr(self, "attempts", 1) or 1,
             "exercise_ref": self.exercise_ref,
+            "task": self.problem_statement,
             "problem_statement": self.problem_statement,
             "starter_code": self.starter_code,
             "test_code": self.test_code,
@@ -380,6 +387,18 @@ def init_db():
         for col, col_type in healing_cols:
             try:
                 conn.execute(text(f"ALTER TABLE healing_logs ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
+
+        exercise_cols = [
+            ("difficulty", "VARCHAR(32) DEFAULT 'medium'"),
+            ("status", "VARCHAR(32) DEFAULT 'verified'"),
+            ("attempts", "INTEGER DEFAULT 1"),
+        ]
+        for col, col_type in exercise_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE exercise_proofs ADD COLUMN {col} {col_type}"))
                 conn.commit()
             except Exception:
                 pass

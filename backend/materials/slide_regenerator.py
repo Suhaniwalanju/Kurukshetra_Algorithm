@@ -47,14 +47,19 @@ def regenerate_single_slide(
     new_slide["bullets"] = updated_bullets[:5]
 
     # 2. Update code snippet if present
-    old_code = original_slide.get("code", "")
+    old_code_raw = original_slide.get("code")
+    old_code = old_code_raw.get("source", "") if isinstance(old_code_raw, dict) else (old_code_raw or "")
     new_code = old_code
     if old_code:
         # Add comment reflecting instruction or enhancement
         if instruction:
             comment_prefix = "// " if tech.lower() in ["java", "c", "cpp", "javascript", "react", "node"] else "# "
             new_code = f"{comment_prefix}Updated: {instruction[:40]}\n" + old_code
-        new_slide["code"] = new_code
+        if isinstance(old_code_raw, dict):
+            new_slide["code"] = dict(old_code_raw)
+            new_slide["code"]["source"] = new_code
+        else:
+            new_slide["code"] = new_code
 
     # 3. Re-verify snippet in sandbox
     runner = runtime_registry.get_runner(tech.lower())
@@ -93,6 +98,8 @@ def regenerate_single_slide(
         tech_version=deck_record.tech_version or "",
         target_timing=old_timing,
         session_length=session_length,
+        deck_id=deck_id,
+        db_session=db_session,
     )
     new_slide["notes"] = new_slide_notes
 

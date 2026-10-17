@@ -145,7 +145,11 @@ class CodeWrapper:
             network_guard = (
                 "# Studio isolated sandbox --network none guard\n"
                 "import socket, sys\n"
-                "def _blocked_connect(*args, **kwargs):\n"
+                "_orig_connect = socket.socket.connect\n"
+                "def _blocked_connect(self, address, *args, **kwargs):\n"
+                "    host = address[0] if isinstance(address, tuple) and address else address\n"
+                "    if host in ('127.0.0.1', 'localhost', '::1'):\n"
+                "        return _orig_connect(self, address, *args, **kwargs)\n"
                 "    raise PermissionError('[Network Access Denied: --network none enforced]')\n"
                 "socket.socket.connect = _blocked_connect\n"
             )

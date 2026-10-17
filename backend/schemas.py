@@ -34,6 +34,7 @@ class Slide(BaseModel):
     title: str = Field(..., description="Slide title, max 8 words")
     bullets: List[str] = Field(default_factory=list, description="Bullet points, max 5 bullets, max 8 words each")
     code: Optional[SlideCode] = None
+    code_ref: Optional[str] = Field(default="", description="Code reference linking to complete runnable example file")
     diagram: Optional[SlideDiagram] = None
     exercise_ref: Optional[str] = Field(default="", description="Optional reference id or brief exercise instruction")
     speaker_hint: Optional[str] = Field(default="", description="Single line speaker note")

@@ -234,19 +234,26 @@ def export_exercises_zip(deck: Dict[str, Any], proofs: list, output_zip_path: st
 
         for idx, proof in enumerate(proofs):
             p = proof if isinstance(proof, dict) else proof.to_dict()
-            ex_id = p.get("slide_id", idx + 1)
+            diff = p.get("difficulty", "medium")
+            ex_folder = f"exercise_{idx + 1}_{diff}"
             starter = p.get("starter_code", "# Starter code\n")
             tests = p.get("test_code", "# Tests\n")
             ref = p.get("reference_solution", "# Reference solution\n")
+            naive = p.get("naive_solution", "# Naive solution\n")
+            task = p.get("task") or p.get("problem_statement", f"Exercise {idx + 1}")
+            status = p.get("status", "verified")
 
             # Student files
-            z.writestr(f"student/exercise_{ex_id}/solution_starter.py", starter)
-            z.writestr(f"student/exercise_{ex_id}/test_exercise.py", tests)
+            z.writestr(f"student/{ex_folder}/README.md", f"# Exercise {idx + 1} ({diff.upper()}): {deck.get('topic')}\n\n## Task\n{task}\n\nComplete the starter code and run the test file to verify.\n")
+            z.writestr(f"student/{ex_folder}/solution_starter.py", starter)
+            z.writestr(f"student/{ex_folder}/test_exercise.py", tests)
 
             # Instructor files
-            z.writestr(f"instructor/exercise_{ex_id}/reference_solution.py", ref)
-            z.writestr(f"instructor/exercise_{ex_id}/test_exercise.py", tests)
-            z.writestr(f"instructor/exercise_{ex_id}/mutation_proof.json", json.dumps(p.get("mutants", []), indent=2))
+            z.writestr(f"instructor/{ex_folder}/README.md", f"# Exercise {idx + 1} ({diff.upper()}): {deck.get('topic')}\n\n## Task\n{task}\n\n## Verification Status: {status}\n")
+            z.writestr(f"instructor/{ex_folder}/reference_solution.py", ref)
+            z.writestr(f"instructor/{ex_folder}/naive_solution.py", naive)
+            z.writestr(f"instructor/{ex_folder}/test_exercise.py", tests)
+            z.writestr(f"instructor/{ex_folder}/mutation_proof.json", json.dumps(p.get("mutants", []), indent=2))
 
     return output_zip_path
 

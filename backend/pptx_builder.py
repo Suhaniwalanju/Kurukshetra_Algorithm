@@ -13,6 +13,7 @@ from pygments.token import Token
 from backend.schemas import Slide, SlideCode, SlideDiagram, TemplateLayoutConfig
 from backend.layout_engine import ElementBox, SlideLayoutPlan
 from backend.diagram_renderer import diagram_renderer
+from backend.utils import sanitize_filename
 
 # 1920x1080 maps to 13.333 x 7.5 inches
 SLIDE_W_INCHES = 13.333333
@@ -65,7 +66,12 @@ class PPTXBuilder:
         Builds a PowerPoint presentation adhering strictly to layout config,
         safe zones, syntax highlighting, and template background.
         """
-        os.makedirs(os.path.dirname(output_pptx_path), exist_ok=True)
+        dir_name = os.path.dirname(os.path.abspath(output_pptx_path))
+        base_name = os.path.basename(output_pptx_path)
+        name, ext = os.path.splitext(base_name)
+        safe_base = f"{sanitize_filename(name)}{ext if ext else '.pptx'}"
+        output_pptx_path = os.path.join(dir_name, safe_base)
+        os.makedirs(dir_name, exist_ok=True)
 
         prs = Presentation()
         prs.slide_width = Inches(SLIDE_W_INCHES)
@@ -353,8 +359,9 @@ def build_presentation(deck_dict: dict) -> str:
 
     output_dir = os.path.join(os.path.abspath("output"), deck_id)
     os.makedirs(output_dir, exist_ok=True)
-    clean_topic = topic.replace(" ", "_").replace("/", "_")
-    pptx_path = os.path.join(output_dir, f"{clean_topic}_{tech}.pptx")
+    clean_topic = sanitize_filename(topic)
+    clean_tech = sanitize_filename(tech)
+    pptx_path = os.path.join(output_dir, f"{clean_topic}_{clean_tech}.pptx")
 
     slides_data = deck_dict.get("slides", [])
     parsed_slides = []
@@ -371,6 +378,8 @@ def build_presentation(deck_dict: dict) -> str:
             s_copy["diagram"] = SlideDiagram(source=diag_raw)
         elif isinstance(diag_raw, dict):
             s_copy["diagram"] = SlideDiagram(**diag_raw)
+        if "type" not in s_copy:
+            s_copy["type"] = "concept"
         parsed_slides.append(Slide(**s_copy))
 
     plans = []

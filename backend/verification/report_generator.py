@@ -58,12 +58,16 @@ class VerificationReportGenerator:
 
         # Exercises
         total_exercises = len(exercise_proofs)
-        proven_exercises = sum(1 for ep in exercise_proofs if ep.reference_passed and ep.naive_failed)
-        avg_mutation_score = (
+        proven_exercises = sum(
+            1 for ep in exercise_proofs
+            if ep.reference_passed and ep.naive_failed and getattr(ep, "status", "verified") == "verified"
+        )
+        raw_avg_score = (
             sum(ep.mutation_score for ep in exercise_proofs) / total_exercises
             if total_exercises > 0
-            else 1.0
+            else 100.0
         )
+        avg_score_disp = f"{raw_avg_score:.1f}%" if raw_avg_score > 1.0 else f"{int(raw_avg_score * 100)}%"
 
         # Compliance
         qa_passed_slides = sum(1 for c in compliance_results if c.get("passed", True))
@@ -338,7 +342,7 @@ class VerificationReportGenerator:
                 <div class="stat-label">Exercises Proven</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value stat-blue">{int(avg_mutation_score * 100)}%</div>
+                <div class="stat-value stat-blue">{avg_score_disp}</div>
                 <div class="stat-label">Mutation Score</div>
             </div>
             <div class="stat-card">
@@ -477,20 +481,41 @@ class VerificationReportGenerator:
                 mutant_names = [f"Mutant {m.get('id')}" for m in (ep.mutants or [])]
                 headers = ["Test Suite", "Reference Sol (Pass)", "Naive Sol (Fail)"] + mutant_names
 
+                diff = getattr(ep, "difficulty", "medium") or "medium"
+                diff_colors = {
+                    "easy": ("#065f46", "#34d399"),
+                    "medium": ("#78350f", "#fbbf24"),
+                    "stretch": ("#581c87", "#c084fc"),
+                }
+                bg_col, text_col = diff_colors.get(diff.lower(), ("#1e293b", "#94a3b8"))
+                diff_badge = f'<span class="badge" style="background: {bg_col}; color: {text_col}; font-weight: 700; text-transform: uppercase;">{diff}</span>'
+
+                ep_status = getattr(ep, "status", "verified") or "verified"
+                if ep_status == "verified" and ep.reference_passed and ep.naive_failed:
+                    status_badge = '<span class="badge badge-verified">VERIFIED ✔</span>'
+                else:
+                    status_badge = '<span class="badge badge-failed">NEEDS REVIEW ✖</span>'
+
+                ep_score = ep.mutation_score if ep.mutation_score > 1.0 else (ep.mutation_score * 100)
+                attempts_cnt = getattr(ep, "attempts", 1) or 1
+
                 html_content += f"""
-                <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <div>
+                <div style="background: var(--bg-tertiary); padding: 18px; border-radius: 10px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            {diff_badge}
                             <strong style="font-size: 16px;">Slide {ep.slide_id} Exercise: {html.escape(ep.exercise_ref)}</strong>
+                            {status_badge}
                         </div>
-                        <div style="display: flex; gap: 12px; align-items: center;">
-                            <span class="badge badge-verified">Ref: PASS ✔</span>
-                            <span class="badge badge-failed">Naive: FAIL ✖</span>
-                            <span class="badge badge-deck">Mutation Score: {int(ep.mutation_score * 100)}% ({ep.killed_mutants}/{ep.total_mutants} killed)</span>
+                        <div style="display: flex; gap: 12px; align-items: center; font-size: 13px;">
+                            <span class="badge badge-deck">Attempts: {attempts_cnt}</span>
+                            <span class="badge {'badge-verified' if ep.reference_passed else 'badge-failed'}">Ref: {'PASS ✔' if ep.reference_passed else 'FAIL ✖'}</span>
+                            <span class="badge {'badge-failed' if ep.naive_failed else 'badge-amber'}">Naive: {'TEST_FAILURE ✖' if ep.naive_failed else 'PASSED (Failed to fail)'}</span>
+                            <span class="badge badge-deck">Mutation Score: {ep_score:.1f}% ({ep.killed_mutants}/{ep.total_mutants} killed)</span>
                         </div>
                     </div>
                     <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
-                        <strong>Problem Statement:</strong> {html.escape(ep.problem_statement or 'Demonstrate concept with unit tests.')}
+                        <strong>Task:</strong> {html.escape(ep.problem_statement or 'Demonstrate concept with unit tests.')}
                     </div>
                     <table class="matrix-table" style="background: var(--bg-secondary); border-radius: 8px; overflow: hidden;">
                         <thead>
@@ -504,7 +529,7 @@ class VerificationReportGenerator:
 
                 # Render rows
                 ref_status = '<span class="cell-pass">PASS</span>' if ep.reference_passed else '<span class="cell-fail">FAIL</span>'
-                naive_status = '<span class="cell-fail">FAIL</span>' if ep.naive_failed else '<span class="cell-pass">PASS</span>'
+                naive_status = '<span class="cell-pass">FAIL (Good)</span>' if ep.naive_failed else '<span class="cell-fail">PASS (Bad)</span>'
 
                 html_content += f"""
                             <tr>
@@ -522,7 +547,7 @@ class VerificationReportGenerator:
                     </table>
                 </div>"""
         else:
-            html_content += '<div style="color: var(--text-muted); font-size: 14px;">No hands-on exercise slides present in this deck.</div>'
+            html_content += '<div style="color: var(--text-muted); font-size: 14px;">No hands-on exercise proofs present in this deck.</div>'
 
         html_content += """
         </section>
@@ -791,16 +816,21 @@ class VerificationReportGenerator:
         # 4. Exercise Proof & Mutation Table
         if exercise_proofs:
             elements.append(Paragraph("2. Exercise Proof & Mutation Score Matrix", h2_style))
-            ex_data = [["Slide", "Reference Sol", "Naive Sol", "Mutants Killed", "Score"]]
+            ex_data = [["Tier", "Exercise Ref", "Status", "Reference Sol", "Naive Sol", "Mutants Killed", "Score"]]
             for ep in exercise_proofs:
+                diff = (getattr(ep, "difficulty", "medium") or "medium").upper()
+                ep_status = (getattr(ep, "status", "verified") or "verified").upper()
+                ep_score = ep.mutation_score if ep.mutation_score > 1.0 else (ep.mutation_score * 100)
                 ex_data.append([
-                    f"Slide {ep.slide_id}",
+                    diff,
+                    ep.exercise_ref or f"Slide {ep.slide_id}",
+                    ep_status,
                     "PASSED" if ep.reference_passed else "FAILED",
                     "FAILED (Good)" if ep.naive_failed else "PASSED (Strengthen)",
                     f"{ep.killed_mutants}/{ep.total_mutants}",
-                    f"{int(ep.mutation_score * 100)}%",
+                    f"{ep_score:.1f}%",
                 ])
-            ex_table = Table(ex_data, colWidths=[70, 110, 130, 120, 110])
+            ex_table = Table(ex_data, colWidths=[55, 95, 75, 80, 80, 85, 70])
             ex_table.setStyle(
                 TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),

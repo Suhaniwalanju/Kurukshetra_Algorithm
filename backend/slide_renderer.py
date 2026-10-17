@@ -10,6 +10,7 @@ from pygments.token import Token
 from backend.schemas import Slide, TemplateLayoutConfig
 from backend.layout_engine import SlideLayoutPlan, ElementBox, get_font, MIN_GUTTER_PX, layout_engine
 from backend.diagram_renderer import diagram_renderer
+from backend.utils import sanitize_filename
 
 # Pygments hex mapping for PIL renderer
 TOKEN_HEX_MAP = {
@@ -389,8 +390,9 @@ def render_deck_previews(deck_dict: dict) -> List[str]:
     output_dir = os.path.join(os.path.abspath("output"), deck_id)
     previews_dir = os.path.join(output_dir, "previews")
     os.makedirs(previews_dir, exist_ok=True)
-    clean_topic = topic.replace(" ", "_").replace("/", "_")
-    pptx_path = os.path.join(output_dir, f"{clean_topic}_{tech}.pptx")
+    clean_topic = sanitize_filename(topic)
+    clean_tech = sanitize_filename(tech)
+    pptx_path = os.path.join(output_dir, f"{clean_topic}_{clean_tech}.pptx")
 
     slides_data = deck_dict.get("slides", [])
     parsed_slides = []
@@ -407,6 +409,8 @@ def render_deck_previews(deck_dict: dict) -> List[str]:
             s_copy["diagram"] = SlideDiagram(source=diag_raw)
         elif isinstance(diag_raw, dict):
             s_copy["diagram"] = SlideDiagram(**diag_raw)
+        if "type" not in s_copy:
+            s_copy["type"] = "concept"
         parsed_slides.append(Slide(**s_copy))
 
     plans = []

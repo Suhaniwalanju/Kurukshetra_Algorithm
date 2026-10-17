@@ -92,6 +92,12 @@ class OutputInjector:
                     elif exec_result.exit_code == 0:
                         slide["code"]["expected_output"] = "Execution successful"
 
+                if slide.get("type") == "concept" and isinstance(slide.get("notes"), dict):
+                    ex_obj = slide["notes"].get("example")
+                    if isinstance(ex_obj, dict):
+                        ex_obj["full_code"] = snippet.source_code
+                    slide["notes"]["full_file"] = snippet.source_code
+
                 # If snippet was wrapped, record imports_omitted note on slide and store full runnable version in trainer notes
                 if snippet.was_wrapped:
                     slide["imports_omitted"] = True

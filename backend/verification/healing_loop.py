@@ -389,7 +389,9 @@ Return ONLY the corrected runnable code snippet (maximum 12 lines):"""
                     data = json.loads(json_match.group(0))
                     if isinstance(data, dict):
                         extracted = (
-                            data.get("correctedCode")
+                            data.get("corrected_code")
+                            or data.get("correctedCode")
+                            or data.get("fixed_code")
                             or data.get("code")
                             or data.get("source")
                             or data.get("snippet")

@@ -141,13 +141,17 @@ def test_e2e_java_21_spring_boot_deck_with_injected_broken_snippet():
             assert "Verified ✔" not in (s.get("verification_badge") or "")
 
         # 5. Exercise Proof: Reference passes, naive fails, mutation score computed
+        # 5. Exercise Proof: 3 tiers (easy, medium, stretch) generated and verified
         exercise_proofs = session.query(ExerciseProofRecord).filter(ExerciseProofRecord.deck_id == deck_id).all()
-        assert len(exercise_proofs) >= 1
-        ep = exercise_proofs[0]
-        assert ep.reference_passed is True
-        assert ep.naive_failed is True
-        assert ep.total_mutants >= 5
-        assert ep.mutation_score >= 50.0
+        assert len(exercise_proofs) == 3
+        tiers = {ep.difficulty: ep for ep in exercise_proofs}
+        assert set(tiers.keys()) == {"easy", "medium", "stretch"}
+        for tier_name, ep in tiers.items():
+            assert ep.reference_passed is True
+            assert ep.naive_failed is True
+            assert ep.total_mutants >= 5
+            assert ep.mutation_score >= 50.0
+            assert ep.status == "verified"
 
         # 6. Template Compliance QA: Zero violations
         assert result["compliance_passed"] is True
