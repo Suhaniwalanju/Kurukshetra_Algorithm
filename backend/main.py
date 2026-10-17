@@ -50,12 +50,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.rbac_routes import rbac_router
+from backend.auth import seed_default_institute_and_admin, get_current_user
+from backend.database import InstituteRecord, UserRecord, SubjectRecord, PublicationRecord, QuizAttemptRecord
+app.include_router(rbac_router)
+
 # Initialize Database on startup
 @app.on_event("startup")
 def on_startup():
     init_db()
+    seed_default_institute_and_admin()
     template_registry.scan_and_load()
-    print("Database initialized and templates registered.")
+    print("Database initialized, default accounts seeded, and templates registered.")
 
 
 # Static files for previews and outputs
@@ -126,6 +132,18 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
     try:
         # 1. Fetch template config
         config = template_registry.get_config(req.college)
+        if getattr(record, "institute_id", None):
+            inst = db_session.query(InstituteRecord).filter(InstituteRecord.id == record.institute_id).first()
+            if inst and inst.template_png and os.path.exists(inst.template_png):
+                config = template_registry.register_custom_institute_template(
+                    college=inst.short_name,
+                    png_path=inst.template_png,
+                    top=inst.safe_area_top,
+                    bottom=inst.safe_area_bottom,
+                    left=inst.safe_area_left,
+                    right=inst.safe_area_right,
+                )
+
         if not config:
             colleges = template_registry.list_colleges()
             if colleges:
@@ -378,6 +396,23 @@ def create_deck(req: DeckCreateRequest, background_tasks: BackgroundTasks, db: S
 
     # 2. Create Deck Record in DB
     deck_id = str(uuid.uuid4())[:8]
+
+    # Resolve institute id if college matches or institute_id is provided
+    inst_id = getattr(req, "institute_id", None) or ""
+    tr_id = ""
+    inst = None
+    if inst_id:
+        inst = db.query(InstituteRecord).filter(InstituteRecord.id == inst_id).first()
+    if not inst:
+        inst = db.query(InstituteRecord).filter(
+            (InstituteRecord.short_name == req.college) | (InstituteRecord.id == req.college.lower())
+        ).first()
+        if inst:
+            inst_id = inst.id
+
+    if inst and (not req.college or req.college == "INSTITUTE"):
+        req.college = inst.short_name
+
     record = DeckRecord(
         id=deck_id,
         college=req.college,
@@ -387,6 +422,8 @@ def create_deck(req: DeckCreateRequest, background_tasks: BackgroundTasks, db: S
         session_length=req.session_length,
         tech=req.tech,
         tech_version=req.tech_version or "",
+        institute_id=inst_id,
+        trainer_id=tr_id,
         status="pending",
         status_message="Deck generation queued...",
     )

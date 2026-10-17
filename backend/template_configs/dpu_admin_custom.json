@@ -1,0 +1,61 @@
+{
+  "college": "dpu_admin_custom",
+  "slide_width": 1920,
+  "slide_height": 1080,
+  "aspect_ratio": "16:9",
+  "template_image_path": "C:\\Users\\SAMRUDDHI KHADE\\OneDrive - Vidyalankar Institute of Technology\\Desktop\\Kurukshetra_dpu\\backend\\template_configs\\dpu_admin_custom_background.png",
+  "template_pptx_path": null,
+  "logo_path": null,
+  "style_guide_path": null,
+  "footer_text": null,
+  "title_zone": {
+    "left": 100,
+    "top": 145,
+    "width": 1720,
+    "height": 100
+  },
+  "content_zone": {
+    "left": 100,
+    "top": 270,
+    "width": 1720,
+    "height": 679
+  },
+  "code_zone": {
+    "left": 100,
+    "top": 270,
+    "width": 840,
+    "height": 679
+  },
+  "diagram_zone": {
+    "left": 980,
+    "top": 270,
+    "width": 840,
+    "height": 679
+  },
+  "footer_zone": {
+    "left": 100,
+    "top": 954,
+    "width": 1720,
+    "height": 45
+  },
+  "presented_by_zone": {
+    "left": 140,
+    "top": 869,
+    "width": 1640,
+    "height": 80
+  },
+  "colors": {
+    "primary": "#6366F1",
+    "secondary": "#3B3D90",
+    "text": "#0F172A",
+    "background": "#0F172A",
+    "code_bg": "#1E1E2E",
+    "code_text": "#F8F8F2",
+    "muted": "#64748B"
+  },
+  "fonts": {
+    "title": "Arial",
+    "body": "Segoe UI",
+    "code": "Consolas"
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "q_1",
+    "number": 1,
+    "question": "What is the complexity of list append?",
+    "options": [
+      "O(1)",
+      "O(n)",
+      "O(log n)",
+      "O(n^2)"
+    ],
+    "code_snippet": ""
+  }
+]

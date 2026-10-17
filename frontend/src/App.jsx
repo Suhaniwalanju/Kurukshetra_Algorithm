@@ -10,11 +10,26 @@ import SingleSlideRegenModal from './components/SingleSlideRegenModal';
 import VersionMigrationModal from './components/VersionMigrationModal';
 import LiveClassModeModal from './components/LiveClassModeModal';
 import HistoryModal from './components/HistoryModal';
+import LoginScreen from './components/LoginScreen';
+import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
+import AdminDashboard from './components/admin/AdminDashboard';
+import StudentDashboard from './components/student/StudentDashboard';
+import PublishModal from './components/trainer/PublishModal';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('studio_theme') || 'dark';
   });
+
+  // Auth State
+  const [authToken, setAuthToken] = useState(() => {
+    return localStorage.getItem('auth_token') || null;
+  });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [institute, setInstitute] = useState(null);
+
+  // Trainer Studio State
   const [colleges, setColleges] = useState([]);
   const [runtimes, setRuntimes] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,6 +49,7 @@ export default function App() {
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [showLiveModeModal, setShowLiveModeModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
   const isDark = theme === 'dark';
 
@@ -45,6 +61,71 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // Validate Token and Load User Session
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setAuthLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch('http://localhost:8000/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const user = await res.json();
+          setCurrentUser(user);
+          setAuthToken(token);
+          if (user.role === 'trainer') {
+            loadTrainerInstitute(token);
+          }
+        } else {
+          localStorage.removeItem('auth_token');
+          setAuthToken(null);
+          setCurrentUser(null);
+        }
+      } catch (e) {
+        console.error('Auth verification error:', e);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
+  const loadTrainerInstitute = async (token) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/trainer/institute', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInstitute(data);
+      }
+    } catch (e) {
+      console.error('Error fetching trainer institute:', e);
+    }
+  };
+
+  const handleLoginSuccess = (user, token) => {
+    setCurrentUser(user);
+    setAuthToken(token);
+    localStorage.setItem('auth_token', token);
+    if (user.role === 'trainer') {
+      loadTrainerInstitute(token);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setAuthToken(null);
+    setCurrentUser(null);
+    setDeckData(null);
+    setMaterialsData(null);
+    setCurrentDeckId(null);
+  };
 
   const fetchInitialData = async () => {
     try {
@@ -86,8 +167,14 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:8000/api/decks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          ...formData,
+          institute_id: institute?.id || currentUser?.institute_id || '',
+        }),
       });
 
       if (!res.ok) {
@@ -236,6 +323,67 @@ export default function App() {
     materialsReady: deckData?.materials_status === 'ready',
   };
 
+  if (authLoading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-[#080C14] text-white' : 'bg-slate-50 text-gray-900'}`}>
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs font-mono tracking-widest uppercase text-gray-400">Authenticating...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 1. Not Authenticated -> Show Login Screen
+  if (!currentUser || !authToken) {
+    return (
+      <LoginScreen
+        onLoginSuccess={handleLoginSuccess}
+        theme={theme}
+      />
+    );
+  }
+
+  // 2. Forced Password Change Required
+  if (currentUser.must_change_password) {
+    return (
+      <ForcePasswordChangeModal
+        token={authToken}
+        user={currentUser}
+        theme={theme}
+        onSuccess={() => {
+          setCurrentUser({ ...currentUser, must_change_password: false });
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 3. Admin Role -> Admin Dashboard
+  if (currentUser.role === 'admin') {
+    return (
+      <AdminDashboard
+        token={authToken}
+        user={currentUser}
+        theme={theme}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 4. Student Role -> Student Dashboard
+  if (currentUser.role === 'student') {
+    return (
+      <StudentDashboard
+        token={authToken}
+        user={currentUser}
+        theme={theme}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // 5. Trainer Role -> Trainer Dashboard (Existing Course Studio + Institute Template auto-applied + Publish button)
   return (
     <div
       className={`min-h-screen flex flex-col transition-colors duration-200 ${
@@ -248,6 +396,9 @@ export default function App() {
         hasDeck={!!deckData}
         onOpenLiveMode={() => setShowLiveModeModal(true)}
         onOpenHistory={() => setShowHistoryModal(true)}
+        user={currentUser}
+        institute={institute}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -271,6 +422,8 @@ export default function App() {
             isGenerating={isGenerating}
             initialData={suggestedTopic}
             theme={theme}
+            institute={institute}
+            user={currentUser}
           />
         )}
 
@@ -287,6 +440,7 @@ export default function App() {
         {deckData && !isGenerating && (
           <SlideGallery
             deck={deckData}
+            materials={materialsData}
             theme={theme}
             isApproved={deckData.approved}
             onApprove={handleApproveDeck}
@@ -298,6 +452,7 @@ export default function App() {
             }}
             onOpenMigration={() => setShowMigrationModal(true)}
             onOpenLiveMode={() => setShowLiveModeModal(true)}
+            onOpenPublish={() => setShowPublishModal(true)}
           />
         )}
       </main>
@@ -361,6 +516,18 @@ export default function App() {
           onSelectDeck={loadDeckById}
           onClose={() => setShowHistoryModal(false)}
           theme={theme}
+        />
+      )}
+
+      {/* Publish to Students Modal */}
+      {showPublishModal && (
+        <PublishModal
+          deck={deckData}
+          materials={materialsData}
+          onClose={() => setShowPublishModal(false)}
+          theme={theme}
+          token={authToken}
+          user={currentUser}
         />
       )}
     </div>

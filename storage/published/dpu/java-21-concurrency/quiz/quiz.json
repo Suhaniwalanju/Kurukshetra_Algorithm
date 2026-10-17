@@ -1,0 +1,26 @@
+[
+  {
+    "id": "q_01",
+    "number": 1,
+    "question": "Which executor creates lightweight virtual threads in Java 21?",
+    "options": [
+      "Executors.newVirtualThreadPerTaskExecutor()",
+      "Executors.newFixedThreadPool(10)",
+      "Executors.newCachedThreadPool()",
+      "ForkJoinPool.commonPool()"
+    ],
+    "code_snippet": ""
+  },
+  {
+    "id": "q_02",
+    "number": 2,
+    "question": "What is the primary benefit of StructuredTaskScope.ShutdownOnFailure?",
+    "options": [
+      "Cancels all child forks if any task fails",
+      "Increases heap memory size",
+      "Prevents garbage collection",
+      "Runs tasks sequentially"
+    ],
+    "code_snippet": ""
+  }
+]

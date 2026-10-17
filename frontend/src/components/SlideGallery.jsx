@@ -11,12 +11,14 @@ import {
   RefreshCw,
   Sparkles,
   Terminal,
+  UploadCloud,
 } from 'lucide-react';
 import SupportingMaterialsView from './SupportingMaterialsView';
 import ExercisesSection from './ExercisesSection';
 
 export default function SlideGallery({
   deck,
+  materials,
   onDownload,
   theme,
   isApproved,
@@ -25,6 +27,7 @@ export default function SlideGallery({
   onOpenRegenerate,
   onOpenMigration,
   onOpenLiveMode,
+  onOpenPublish,
 }) {
   const isDark = theme === 'dark';
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
@@ -176,6 +179,17 @@ export default function SlideGallery({
             >
               <Download className="w-4 h-4" />
               <span>Download .PPTX</span>
+            </button>
+          )}
+
+          {onOpenPublish && (
+            <button
+              onClick={onOpenPublish}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xl shadow-emerald-500/25 transition-all transform hover:scale-[1.02]"
+              title="Publish student-safe materials and exercises to student dashboard"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Publish to Students</span>
             </button>
           )}
         </div>

@@ -83,6 +83,7 @@ class DeckCreateRequest(BaseModel):
     tech: str = Field(..., min_length=1, description="Primary technology")
     tech_version: Optional[str] = Field(default="", description="Technology version e.g. 21, 3.12")
     include_own_imports: bool = Field(default=True, description="When true, slide generation prompt requires model to include its own imports")
+    institute_id: Optional[str] = Field(default=None, description="Institute ID for multi-tenant styling")
 
 
 class BoundingBox(BaseModel):

@@ -368,6 +368,122 @@ class TemplateRegistry:
         combined.save(preview_out, "PNG")
         return preview_out
 
+    def register_custom_institute_template(
+        self,
+        college: str,
+        png_path: str,
+        top: int = 100,
+        bottom: int = 100,
+        left: int = 120,
+        right: int = 120,
+    ) -> TemplateLayoutConfig:
+        """Dynamically registers or updates a custom template with custom safe area margins."""
+        normalized_png = self._normalize_template_image(college, png_path)
+
+        avail_width = max(200, 1920 - left - right)
+        avail_height = max(200, 1080 - top - bottom)
+
+        title_height = 110
+        footer_height = 40
+        body_top = top + title_height + 20
+        body_height = max(100, avail_height - title_height - footer_height - 30)
+
+        content_w = int(avail_width * 0.46)
+        code_w = avail_width - content_w - 30
+
+        config = TemplateLayoutConfig(
+            college=college,
+            slide_width=1920,
+            slide_height=1080,
+            aspect_ratio="16:9",
+            template_image_path=normalized_png,
+            title_zone=BoundingBox(left=left, top=top, width=avail_width, height=title_height),
+            content_zone=BoundingBox(left=left, top=body_top, width=content_w, height=body_height),
+            code_zone=BoundingBox(left=left + content_w + 30, top=body_top, width=code_w, height=body_height),
+            diagram_zone=BoundingBox(left=left + content_w + 30, top=body_top, width=code_w, height=body_height),
+            footer_zone=BoundingBox(left=left, top=1080 - bottom - footer_height, width=avail_width, height=footer_height),
+            presented_by_zone=BoundingBox(left=left, top=top + 60, width=avail_width, height=50),
+        )
+
+        self.templates[college] = config
+        self.save_config(config)
+        self.generate_sample_slide_preview(college, config, top, bottom, left, right)
+        return config
+
+    def generate_sample_slide_preview(
+        self,
+        college: str,
+        config: TemplateLayoutConfig,
+        top: int = 100,
+        bottom: int = 100,
+        left: int = 120,
+        right: int = 120,
+    ) -> str:
+        """Generates a high-resolution preview showing safe-area margins and a sample slide layout."""
+        bg_path = config.template_image_path
+        if not os.path.exists(bg_path):
+            img = Image.new("RGB", (1920, 1080), color="#0F172A")
+        else:
+            img = Image.open(bg_path).convert("RGBA")
+
+        overlay = Image.new("RGBA", (1920, 1080), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # 1. Safe-area margin guides (semi-transparent emerald outline)
+        safe_x2 = 1920 - right
+        safe_y2 = 1080 - bottom
+        draw.rectangle([left, top, safe_x2, safe_y2], outline=(16, 185, 129, 220), width=3)
+        draw.rectangle([left, top, left + 160, top + 26], fill=(16, 185, 129, 230))
+        draw.text((left + 8, top + 6), "Safe Area Boundary", fill=(255, 255, 255, 255))
+
+        # 2. Sample Title Box
+        t_box = config.title_zone
+        draw.rectangle([t_box.left, t_box.top + 30, t_box.left + t_box.width, t_box.top + t_box.height],
+                       fill=(30, 41, 59, 160), outline=(59, 130, 246, 200), width=2)
+        draw.text((t_box.left + 20, t_box.top + 45), "Sample Slide: Virtual Threads & Concurrency", fill=(255, 255, 255, 255))
+
+        # 3. Sample Bullets (Content Zone)
+        c_box = config.content_zone
+        draw.rectangle([c_box.left, c_box.top, c_box.left + c_box.width, c_box.top + c_box.height],
+                       fill=(15, 23, 42, 170), outline=(100, 116, 139, 140), width=1)
+        draw.text((c_box.left + 20, c_box.top + 20), "• Lightweight user-mode threads", fill=(241, 245, 249, 255))
+        draw.text((c_box.left + 20, c_box.top + 65), "• Millions of concurrent tasks", fill=(241, 245, 249, 255))
+        draw.text((c_box.left + 20, c_box.top + 110), "• Zero kernel scheduling overhead", fill=(241, 245, 249, 255))
+        draw.text((c_box.left + 20, c_box.top + 155), "• Guaranteed safe within template zones", fill=(16, 185, 129, 255))
+
+        # 4. Sample Code Box (Code Zone)
+        k_box = config.code_zone
+        draw.rectangle([k_box.left, k_box.top, k_box.left + k_box.width, k_box.top + k_box.height],
+                       fill=(10, 15, 30, 220), outline=(139, 92, 246, 180), width=2)
+        code_lines = [
+            "// Java 21 Virtual Threads",
+            "try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {",
+            "    IntStream.range(0, 10_000).forEach(i -> {",
+            "        executor.submit(() -> {",
+            "            Thread.sleep(Duration.ofMillis(10));",
+            "            return i;",
+            "        });",
+            "    });",
+            "}"
+        ]
+        curr_y = k_box.top + 20
+        for cline in code_lines:
+            draw.text((k_box.left + 20, curr_y), cline, fill=(167, 139, 250, 255) if "//" in cline else (248, 250, 252, 255))
+            curr_y += 28
+
+        combined = Image.alpha_composite(img, overlay).convert("RGB")
+        preview_path = os.path.join(CONFIGS_DIR, f"{college}_sample_preview.png")
+        combined.save(preview_path, "PNG")
+        return preview_path
+
 
 # Singleton instance
 template_registry = TemplateRegistry()
+
+
+def register_custom_institute_template(*args, **kwargs):
+    return template_registry.register_custom_institute_template(*args, **kwargs)
+
+
+def generate_sample_slide_preview(*args, **kwargs):
+    return template_registry.generate_sample_slide_preview(*args, **kwargs)

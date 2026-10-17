@@ -42,6 +42,8 @@ class DeckRecord(Base):
     migration_history_json = Column(Text, default="[]")
     generation_progress_json = Column(Text, default="{}")
     preview_paths_json = Column(Text, default="[]")
+    institute_id = Column(String(64), nullable=True, default="", index=True)
+    trainer_id = Column(String(64), nullable=True, default="", index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -80,6 +82,8 @@ class DeckRecord(Base):
             "generation_progress": json.loads(self.generation_progress_json) if getattr(self, "generation_progress_json", None) else {},
             "exercises": [e.to_dict() for e in self.exercise_proofs] if getattr(self, "exercise_proofs", None) else [],
             "preview_paths": json.loads(self.preview_paths_json) if self.preview_paths_json else [],
+            "institute_id": getattr(self, "institute_id", "") or "",
+            "trainer_id": getattr(self, "trainer_id", "") or "",
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -372,6 +376,170 @@ class ContentReviewRecord(Base):
         }
 
 
+class InstituteRecord(Base):
+    __tablename__ = "institutes"
+
+    id = Column(String(64), primary_key=True, index=True)
+    name = Column(String(256), nullable=False)
+    short_name = Column(String(64), nullable=False)
+    contact_email = Column(String(256), nullable=True, default="")
+    logo_path = Column(String(512), nullable=True, default="")
+    template_png = Column(String(512), nullable=True, default="")
+    safe_area_top = Column(Integer, default=100)
+    safe_area_bottom = Column(Integer, default=100)
+    safe_area_left = Column(Integer, default=120)
+    safe_area_right = Column(Integer, default=120)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    users = relationship("UserRecord", back_populates="institute", cascade="all, delete-orphan")
+    subjects = relationship("SubjectRecord", back_populates="institute", cascade="all, delete-orphan")
+    publications = relationship("PublicationRecord", back_populates="institute", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "short_name": self.short_name,
+            "contact_email": self.contact_email or "",
+            "logo_path": self.logo_path or "",
+            "template_png": self.template_png or "",
+            "safe_area_top": self.safe_area_top,
+            "safe_area_bottom": self.safe_area_bottom,
+            "safe_area_left": self.safe_area_left,
+            "safe_area_right": self.safe_area_right,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class UserRecord(Base):
+    __tablename__ = "users"
+
+    id = Column(String(64), primary_key=True, index=True)
+    institute_id = Column(String(64), ForeignKey("institutes.id"), index=True, nullable=False)
+    role = Column(String(32), nullable=False)  # admin, trainer, student
+    display_name = Column(String(128), nullable=False)
+    login_id = Column(String(128), nullable=False, index=True)  # unique within institute
+    password_hash = Column(String(256), nullable=False)
+    is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False)
+    roll_number = Column(String(64), nullable=True, default="")
+    class_branch = Column(String(128), nullable=True, default="")
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    institute = relationship("InstituteRecord", back_populates="users")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "institute_id": self.institute_id,
+            "institute_name": self.institute.name if self.institute else "",
+            "institute_short_name": self.institute.short_name if self.institute else "",
+            "role": self.role,
+            "display_name": self.display_name,
+            "login_id": self.login_id,
+            "is_active": self.is_active,
+            "must_change_password": self.must_change_password,
+            "roll_number": self.roll_number or "",
+            "class_branch": self.class_branch or "",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class SubjectRecord(Base):
+    __tablename__ = "subjects"
+
+    id = Column(String(64), primary_key=True, index=True)
+    institute_id = Column(String(64), ForeignKey("institutes.id"), index=True, nullable=False)
+    name = Column(String(256), nullable=False)
+    folder_slug = Column(String(128), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    institute = relationship("InstituteRecord", back_populates="subjects")
+    publications = relationship("PublicationRecord", back_populates="subject", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "institute_id": self.institute_id,
+            "name": self.name,
+            "folder_slug": self.folder_slug,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class PublicationRecord(Base):
+    __tablename__ = "publications"
+
+    id = Column(String(64), primary_key=True, index=True)
+    institute_id = Column(String(64), ForeignKey("institutes.id"), index=True, nullable=False)
+    subject_id = Column(String(64), ForeignKey("subjects.id"), index=True, nullable=False)
+    deck_id = Column(String(64), ForeignKey("decks.id"), index=True, nullable=False)
+    trainer_id = Column(String(64), ForeignKey("users.id"), index=True, nullable=False)
+    version = Column(Integer, default=1)
+    published_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(32), default="published")  # published, unpublished
+    include_slides = Column(Boolean, default=True)
+    published_path = Column(String(512), default="")
+
+    institute = relationship("InstituteRecord", back_populates="publications")
+    subject = relationship("SubjectRecord", back_populates="publications")
+    deck = relationship("DeckRecord")
+    trainer = relationship("UserRecord")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "institute_id": self.institute_id,
+            "institute_name": self.institute.name if self.institute else "",
+            "subject_id": self.subject_id,
+            "subject_name": self.subject.name if self.subject else "",
+            "folder_slug": self.subject.folder_slug if self.subject else "",
+            "deck_id": self.deck_id,
+            "deck_topic": self.deck.topic if self.deck else "",
+            "trainer_id": self.trainer_id,
+            "trainer_name": self.trainer.display_name if self.trainer else "",
+            "version": self.version,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "status": self.status,
+            "include_slides": self.include_slides,
+            "published_path": self.published_path,
+        }
+
+
+class QuizAttemptRecord(Base):
+    __tablename__ = "quiz_attempts"
+
+    id = Column(String(64), primary_key=True, index=True)
+    institute_id = Column(String(64), ForeignKey("institutes.id"), index=True, nullable=False)
+    publication_id = Column(String(64), ForeignKey("publications.id"), index=True, nullable=False)
+    student_id = Column(String(64), ForeignKey("users.id"), index=True, nullable=False)
+    score = Column(Integer, default=0)
+    total_questions = Column(Integer, default=0)
+    answers_json = Column(Text, default="{}")
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship("UserRecord")
+    publication = relationship("PublicationRecord")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "institute_id": self.institute_id,
+            "publication_id": self.publication_id,
+            "student_id": self.student_id,
+            "student_name": self.student.display_name if self.student else "",
+            "roll_number": self.student.roll_number if self.student else "",
+            "score": self.score,
+            "total_questions": self.total_questions,
+            "answers": json.loads(self.answers_json) if self.answers_json else {},
+            "submitted_at": self.submitted_at.isoformat() if self.submitted_at else None,
+        }
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     # Ensure newly added columns exist in decks table for existing SQLite database
@@ -391,6 +559,8 @@ def init_db():
             ("exports_json", "TEXT DEFAULT '{}'"),
             ("migration_history_json", "TEXT DEFAULT '[]'"),
             ("generation_progress_json", "TEXT DEFAULT '{}'"),
+            ("institute_id", "VARCHAR(64) DEFAULT ''"),
+            ("trainer_id", "VARCHAR(64) DEFAULT ''"),
         ]
         for col, col_type in cols:
             try:

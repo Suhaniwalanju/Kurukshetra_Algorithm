@@ -100,12 +100,15 @@ export default function DeckForm({
   isGenerating,
   initialData,
   theme,
+  institute,
+  user,
 }) {
   const isDark = theme === 'dark';
 
   const [formData, setFormData] = useState({
-    college: '',
-    professor_name: '',
+    college: institute?.short_name || '',
+    institute_id: institute?.id || '',
+    professor_name: user?.display_name || '',
     topic: '',
     student_level: 'Beginner',
     session_length: 20,
@@ -115,10 +118,17 @@ export default function DeckForm({
   });
 
   useEffect(() => {
-    if (colleges && colleges.length > 0 && !formData.college) {
+    if (institute) {
+      setFormData((prev) => ({
+        ...prev,
+        college: institute.short_name || 'DPU',
+        institute_id: institute.id,
+        professor_name: prev.professor_name || user?.display_name || '',
+      }));
+    } else if (colleges && colleges.length > 0 && !formData.college) {
       setFormData((prev) => ({ ...prev, college: colleges[0].college }));
     }
-  }, [colleges]);
+  }, [institute, colleges, user]);
 
   useEffect(() => {
     if (initialData) {
@@ -165,7 +175,8 @@ export default function DeckForm({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.college) {
+    const collegeToUse = institute?.short_name || formData.college || 'DPU';
+    if (!collegeToUse) {
       alert('Please select a college template.');
       return;
     }
@@ -181,7 +192,11 @@ export default function DeckForm({
       alert('Please specify the technology stack.');
       return;
     }
-    onGenerate(formData);
+    onGenerate({
+      ...formData,
+      college: collegeToUse,
+      institute_id: institute?.id || formData.institute_id || '',
+    });
   };
 
   return (
@@ -201,32 +216,55 @@ export default function DeckForm({
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 1. College Selection */}
+          {/* 1. College Selection / Auto-applied Institute Template */}
           <div className="space-y-2">
             <label className={`text-xs font-semibold flex items-center space-x-1.5 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
               <School className="w-3.5 h-3.5 text-blue-500" />
-              <span>College Template *</span>
+              <span>Institute Template (Auto-Applied) *</span>
             </label>
-            <select
-              value={formData.college}
-              onChange={(e) => setFormData({ ...formData, college: e.target.value })}
-              className={`w-full rounded-xl px-4 py-2.5 text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                isDark
-                  ? 'bg-gray-900 border-gray-700 text-white hover:border-gray-600'
-                  : 'bg-gray-50 border-gray-300 text-gray-900 hover:border-gray-400 focus:bg-white'
-              }`}
-              required
-            >
-              {colleges.length === 0 ? (
-                <option value="">No templates found in /input/templates/</option>
-              ) : (
-                colleges.map((col) => (
-                  <option key={col.college} value={col.college}>
-                    {col.college} ({col.slide_size})
-                  </option>
-                ))
-              )}
-            </select>
+            {institute ? (
+              <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                isDark ? 'bg-gray-900/90 border-gray-700' : 'bg-blue-50/50 border-blue-200'
+              }`}>
+                <div className="flex items-center space-x-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-bold text-xs text-blue-400">
+                    {institute.short_name || 'INST'}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-xs leading-tight">
+                      {institute.name}
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Template: 1920x1080 Branded (Safe Zones Active)
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  ✓ Configured
+                </span>
+              </div>
+            ) : (
+              <select
+                value={formData.college}
+                onChange={(e) => setFormData({ ...formData, college: e.target.value })}
+                className={`w-full rounded-xl px-4 py-2.5 text-sm border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                  isDark
+                    ? 'bg-gray-900 border-gray-700 text-white hover:border-gray-600'
+                    : 'bg-gray-50 border-gray-300 text-gray-900 hover:border-gray-400 focus:bg-white'
+                }`}
+                required
+              >
+                {colleges.length === 0 ? (
+                  <option value="">No templates found in /input/templates/</option>
+                ) : (
+                  colleges.map((col) => (
+                    <option key={col.college} value={col.college}>
+                      {col.college} ({col.slide_size})
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
           </div>
 
           {/* 2. Professor Name */}
