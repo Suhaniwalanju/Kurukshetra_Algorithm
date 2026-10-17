@@ -12,7 +12,6 @@ import {
   Sparkles,
   Terminal,
 } from 'lucide-react';
-import VerificationReportPanel from './VerificationReportPanel';
 import SupportingMaterialsView from './SupportingMaterialsView';
 import ExercisesSection from './ExercisesSection';
 
@@ -30,6 +29,35 @@ export default function SlideGallery({
   const isDark = theme === 'dark';
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
   const [fullscreenImage, setFullscreenImage] = useState(null);
+  const [reverifying, setReverifying] = useState(false);
+  const [reverifyFeedback, setReverifyFeedback] = useState('');
+
+  const handleReverify = async () => {
+    if (!deck?.id || reverifying) return;
+    try {
+      setReverifying(true);
+      setReverifyFeedback('');
+      const res = await fetch(`http://localhost:8000/api/decks/${deck.id}/reverify`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReverifyFeedback(
+          data.reverified_count > 0 || data.healed_count > 0
+            ? `Re-verified: ${data.reverified_count} refreshed, ${data.healed_count} healed`
+            : `All ${data.total_snippets || 0} snippets are up to date.`
+        );
+      } else {
+        setReverifyFeedback('Re-verify completed.');
+      }
+    } catch (e) {
+      console.error(e);
+      setReverifyFeedback('Error during re-verify.');
+    } finally {
+      setReverifying(false);
+      setTimeout(() => setReverifyFeedback(''), 4000);
+    }
+  };
 
   // Keyboard navigation (Left / Right arrow keys)
   useEffect(() => {
@@ -77,6 +105,28 @@ export default function SlideGallery({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {reverifyFeedback && (
+            <span className="text-xs text-emerald-400 font-medium px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              {reverifyFeedback}
+            </span>
+          )}
+
+          <button
+            onClick={handleReverify}
+            disabled={reverifying}
+            className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center space-x-1.5 border transition-all ${
+              reverifying ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02]'
+            } ${
+              isDark
+                ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+            }`}
+            title="Re-run verification for stale or changed snippets"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${reverifying ? 'animate-spin' : ''}`} />
+            <span>{reverifying ? 'Re-verifying...' : 'Re-verify'}</span>
+          </button>
+
           {!isApproved && onApprove && (
             <button
               onClick={onApprove}
@@ -130,14 +180,6 @@ export default function SlideGallery({
           )}
         </div>
       </div>
-
-      {/* Collapsible Verification Report Panel */}
-      <VerificationReportPanel
-        deckId={deck.id}
-        theme={theme}
-        isApproved={isApproved}
-        onApprove={onApprove}
-      />
 
       {/* Main Slide Stage + Metadata Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
