@@ -40,6 +40,15 @@ class QuizQuestion(BaseModel):
     correct_answer: str  # "A", "B", "C", or "D"
     explanation: str
     distractor_explanations: Dict[str, str] = Field(default_factory=dict)
+    source_slide_id: int = 1
+    slide_id: Optional[int] = None
+    exercise_ref: Optional[str] = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.slide_id is None:
+            self.slide_id = self.source_slide_id
+        elif self.source_slide_id == 1 and self.slide_id != 1:
+            self.source_slide_id = self.slide_id
 
 
 class SyntaxCard(BaseModel):

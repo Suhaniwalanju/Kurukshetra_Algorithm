@@ -155,10 +155,11 @@ def export_quiz_pdf(deck: Dict[str, Any], quiz: list, output_pdf_path: str, incl
 
         # Answer key explanations
         if include_answers:
+            slide_ref = item.get("source_slide_id") or item.get("slide_id", 1)
             expl_box = [
-                Paragraph(f"<b>Key: {item.get('correct_answer', '')}</b> — {item.get('explanation', '')}", body_style),
+                Paragraph(f"<b>Key: {item.get('correct_answer', '')}</b> (Grounded in Slide {slide_ref}) — {item.get('explanation', '')}", body_style),
                 Spacer(1, 2),
-                Paragraph("<b>Distractor Analysis:</b>", ParagraphStyle('DTitle', fontName='Helvetica-Bold', fontSize=7.5, textColor=colors.HexColor("#64748B")))
+                Paragraph("<b>Distractor Analysis (Common Mistakes):</b>", ParagraphStyle('DTitle', fontName='Helvetica-Bold', fontSize=7.5, textColor=colors.HexColor("#64748B")))
             ]
             for d_key, d_exp in item.get("distractor_explanations", {}).items():
                 expl_box.append(Paragraph(f"• <b>Option {d_key}:</b> {d_exp}", ParagraphStyle('DBody', fontName='Helvetica', fontSize=7, leading=9, textColor=colors.HexColor("#64748B"))))

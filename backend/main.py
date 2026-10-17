@@ -548,8 +548,9 @@ def generate_supporting_materials(deck_id: str, db: Session = Depends(get_db)):
         record.student_notes_json = json.dumps([n.model_dump() for n in student_notes])
         record.professor_notes_json = json.dumps([n.model_dump() for n in prof_notes])
 
-        # 2. Quiz (MCQs + Output Prediction)
-        quiz = generate_quiz_for_deck(deck_dict, snippets)
+        # 2. Quiz (8 MCQs Grounded in Slides & Exercises)
+        exercise_proofs = [ep.to_dict() for ep in record.exercise_proofs] if getattr(record, "exercise_proofs", None) else []
+        quiz = generate_quiz_for_deck(deck_dict, snippets, exercises=exercise_proofs, db_session=db)
         record.quiz_json = json.dumps([q.model_dump() for q in quiz])
 
         # 3. Cheat Sheet (1-page A4)

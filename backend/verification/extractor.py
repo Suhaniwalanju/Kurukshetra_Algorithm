@@ -243,7 +243,7 @@ class SnippetExtractor:
                     record = SnippetRecord(
                         id=snip_id,
                         deck_id=deck_id,
-                        slide_id=item.get("slide_id", 1),
+                        slide_id=item.get("source_slide_id") or item.get("slide_id", 1),
                         snippet_type="quiz_code",
                         language=normalized_default_lang,
                         version=default_version,
@@ -277,7 +277,7 @@ class SnippetExtractor:
                         record = SnippetRecord(
                             id=snip_id,
                             deck_id=deck_id,
-                            slide_id=item.get("slide_id", 1),
+                            slide_id=item.get("source_slide_id") or item.get("slide_id", 1),
                             snippet_type=f"{block_kind}_quiz_item",
                             language=normalized_default_lang,
                             version=default_version,
