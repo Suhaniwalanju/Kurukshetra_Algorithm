@@ -53,7 +53,7 @@ class JavaRunner(LanguageRunner):
         files = self.prepare(snippet, options)
         main_file = list(files.keys())[0]
         class_name = os.path.splitext(main_file)[0]
-        command = f"javac -Xlint:deprecation,removal {main_file} && java -ea {class_name}"
+        command = f"javac -Xlint:all -Werror --release 21 {main_file} && java -ea {class_name}"
         is_fragment = (main_file == "Main.java" and not bool(re.search(r'\bclass\s+([A-Za-z0-9_]+)', snippet.strip())))
 
         if self.is_docker_available():
@@ -69,8 +69,8 @@ class JavaRunner(LanguageRunner):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(files[main_file])
 
-            # 1. Compile with -Xlint:deprecation,removal
-            javac_cmd = ["javac", "-Xlint:deprecation,removal", "-encoding", "UTF-8", main_file]
+            # 1. Compile with -Xlint:all -Werror --release 21
+            javac_cmd = ["javac", "-Xlint:all", "-Werror", "--release", "21", "-encoding", "UTF-8", main_file]
             try:
                 comp_proc = subprocess.run(
                     javac_cmd,
@@ -83,7 +83,7 @@ class JavaRunner(LanguageRunner):
 
                 if comp_proc.returncode != 0:
                     duration_ms = (time.time() - start_time) * 1000
-                    return RunResult(
+                    res = RunResult(
                         status="fail",
                         compile_output=comp_output,
                         stdout="",
@@ -93,6 +93,8 @@ class JavaRunner(LanguageRunner):
                         command=command,
                         was_wrapped=is_fragment,
                     )
+                    self._analyze_java_deprecations(res)
+                    return res
 
             except subprocess.TimeoutExpired:
                 duration_ms = (time.time() - start_time) * 1000
@@ -170,8 +172,11 @@ class JavaRunner(LanguageRunner):
                 res.stderr = "Deprecation Error: API is marked for removal."
         elif has_dep:
             res.deprecations.append("Deprecation warning detected")
+            res.status = "fail"
             if res.exit_code == 0:
-                res.status = "warning"
+                res.exit_code = 1
+            if not res.stderr:
+                res.stderr = "Deprecation Warning detected (treated as error via -Werror)."
 
     def run_tests(self, exercise: Dict[str, Any], solution: str, timeout_sec: int = 20) -> TestResult:
         start_time = time.time()
@@ -187,7 +192,7 @@ class JavaRunner(LanguageRunner):
             with open(fpath, "w", encoding="utf-8") as f:
                 f.write(combined)
 
-            comp = subprocess.run(["javac", "TestRunner.java"], cwd=tmpdir, capture_output=True, text=True, timeout=timeout_sec)
+            comp = subprocess.run(["javac", "-Xlint:all", "-Werror", "--release", "21", "TestRunner.java"], cwd=tmpdir, capture_output=True, text=True, timeout=timeout_sec)
             if comp.returncode != 0:
                 duration_ms = (time.time() - start_time) * 1000
                 return TestResult(

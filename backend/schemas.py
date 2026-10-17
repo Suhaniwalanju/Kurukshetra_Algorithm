@@ -41,6 +41,7 @@ class Slide(BaseModel):
     imports_omitted: Optional[bool] = Field(default=False, description="Whether imports were omitted on the slide and code was wrapped")
     imports_omitted_note: Optional[str] = Field(default="", description="Note indicating imports omitted")
     trainer_notes: Optional[str] = Field(default="", description="Full runnable code and notes for trainer")
+    notes: Optional[Dict[str, Any]] = Field(default=None, description="Per-slide notes JSON")
 
     @field_validator("title")
     @classmethod

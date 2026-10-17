@@ -84,11 +84,12 @@ class NodeExpressRunner(LanguageRunner):
 
     def execute(self, snippet: str, timeout_sec: int = 20, options: Optional[Dict[str, Any]] = None) -> RunResult:
         files = self.prepare(snippet, options)
-        command = "node server.js"
+        command = "node --throw-deprecation server.js"
 
         if self.is_docker_available():
             res = self.run_in_docker(files, command, timeout_sec=timeout_sec, network="none")
             self._parse_http_artifacts(res)
+            self._analyze_node_deprecations(res)
             return res
 
         # Local Node runner execution
@@ -114,7 +115,7 @@ class NodeExpressRunner(LanguageRunner):
                     stderr=syntax_check.stderr,
                     exit_code=syntax_check.returncode,
                     duration_ms=duration_ms,
-                    command=f"{node_bin} server.js",
+                    command=f"{node_bin} --throw-deprecation server.js",
                 )
 
             # 2. Run node script
@@ -141,9 +142,10 @@ class NodeExpressRunner(LanguageRunner):
                     stderr=stderr,
                     exit_code=proc.returncode,
                     duration_ms=duration_ms,
-                    command=f"{node_bin} server.js",
+                    command=f"{node_bin} --throw-deprecation server.js",
                 )
                 self._parse_http_artifacts(res)
+                self._analyze_node_deprecations(res)
                 return res
 
             except subprocess.TimeoutExpired:
@@ -180,16 +182,18 @@ class NodeExpressRunner(LanguageRunner):
         # Check native node runtime errors if snippet does not use 'app'
         if "app." not in raw_snippet and "req." not in raw_snippet and "res." not in raw_snippet:
             try:
-                native_run = subprocess.run([node_bin, "-e", raw_snippet], capture_output=True, text=True, timeout=timeout_sec)
+                native_run = subprocess.run([node_bin, "--throw-deprecation", "-e", raw_snippet], capture_output=True, text=True, timeout=timeout_sec)
                 if native_run.returncode != 0:
-                    return RunResult(
+                    res = RunResult(
                         status="fail",
                         stdout="",
                         stderr=native_run.stderr,
                         exit_code=native_run.returncode,
                         duration_ms=(time.time() - start_time) * 1000,
-                        command="node server.js",
+                        command=f"{node_bin} --throw-deprecation server.js",
                     )
+                    self._analyze_node_deprecations(res)
+                    return res
             except subprocess.TimeoutExpired:
                 return RunResult(status="timeout", stderr="[Sandbox Timeout]", exit_code=124)
             except Exception:
@@ -229,15 +233,25 @@ class NodeExpressRunner(LanguageRunner):
             stdout = f"Server listening on port 3000\nHTTP/1.1 {status_code} OK\nResponse: {body_str}\n"
 
         duration_ms = (time.time() - start_time) * 1000
-        return RunResult(
+        res = RunResult(
             status="pass",
             stdout=stdout,
             stderr="",
             exit_code=0,
             duration_ms=duration_ms,
-            command="node server.js",
+            command=f"{node_bin} --throw-deprecation server.js",
             artifacts={"http_response": http_resp},
         )
+        self._analyze_node_deprecations(res)
+        return res
+
+    def _analyze_node_deprecations(self, res: RunResult):
+        combined = (res.stderr or "") + "\n" + (res.stdout or "")
+        if "DeprecationWarning" in combined or "[DEP" in combined:
+            res.deprecations.append("DeprecationWarning detected")
+            res.status = "fail"
+            if res.exit_code == 0:
+                res.exit_code = 1
 
     def _parse_http_artifacts(self, res: RunResult):
         for line in res.stdout.split("\n"):

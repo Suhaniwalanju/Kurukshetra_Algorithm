@@ -306,10 +306,21 @@ class VerificationReportGenerator:
                 <div><strong>Status:</strong> {"PASSED ✔" if (needs_review == 0 and failed_snippets == 0) else "NEEDS REVIEW ⚠"}</div>
                 <div><strong>Image Digest:</strong> <code>{html.escape(image_digest) if image_digest else "N/A (Process Fallback)"}</code></div>
             </div>
-        </header>
+        </header>"""
 
+        found_count = len(snippets)
+        executed_count = sum(1 for s in snippets if getattr(s, "was_executed", True) is not False and s.status != "unverified")
+        unverified_count = sum(1 for s in snippets if getattr(s, "was_executed", True) is False or s.status == "unverified")
+        non_det_count = sum(1 for s in snippets if getattr(s, "is_non_deterministic", False))
+
+        # KPI Summary Cards
+        html_content += f"""
         <!-- KPI Summary Cards -->
         <div class="summary-grid">
+            <div class="stat-card">
+                <div class="stat-value stat-blue">{found_count} / {executed_count}</div>
+                <div class="stat-label">Found vs Executed</div>
+            </div>
             <div class="stat-card">
                 <div class="stat-value stat-green">{passed_snippets}/{total_snippets}</div>
                 <div class="stat-label">Snippets Verified</div>
@@ -340,7 +351,7 @@ class VerificationReportGenerator:
         <section>
             <div class="section-header">
                 <h2 class="section-title">1. Code Snippet Sandbox Verification</h2>
-                <div>Total: {total_snippets} Snippets</div>
+                <div>Total Found: {found_count} | Executed: {executed_count} | Unverified: {unverified_count}</div>
             </div>
             <table>
                 <thead>
@@ -357,7 +368,13 @@ class VerificationReportGenerator:
         for snip in snippets:
             run = run_by_snippet.get(snip.id)
             status = snip.status.lower()
-            if status in ["verified", "passed"]:
+            was_exec = getattr(snip, "was_executed", True)
+            is_non_det = getattr(snip, "is_non_deterministic", False)
+            source_loc = getattr(snip, "source_location", "slide_code")
+
+            if was_exec is False or status == "unverified":
+                badge_html = '<span class="badge" style="background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.4);">Unverified (Not Run)</span>'
+            elif status in ["verified", "passed"]:
                 badge_html = '<span class="badge badge-verified">Verified ✔</span>'
             elif status == "verified_low_assurance":
                 badge_html = '<span class="badge badge-low-assurance">Low Assurance ⚠</span>'
@@ -367,6 +384,9 @@ class VerificationReportGenerator:
                 badge_html = '<span class="badge badge-review">Needs Review ⚠</span>'
             else:
                 badge_html = '<span class="badge badge-failed">Failed ✖</span>'
+
+            if is_non_det:
+                badge_html += '<div style="margin-top: 4px;"><span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px;">Non-Deterministic ⚠</span></div>'
 
             duration_str = f"{run.duration_ms}ms" if (run and run.duration_ms) else (f"{snip.duration_ms}ms" if snip.duration_ms else "-")
             cmd_str = html.escape(run.command_executed if (run and run.command_executed) else (snip.command_executed or "Direct Sandbox"))
@@ -379,6 +399,8 @@ class VerificationReportGenerator:
             diff_html = ""
             if logs:
                 last_log = logs[-1]
+                model_used = getattr(last_log, "model_name", "qwen2.5:3b") or "qwen2.5:3b"
+                attempt_str = f"Attempt {last_log.attempt_number} via {model_used}"
                 if last_log.diff_text:
                     diff_lines = []
                     for dline in last_log.diff_text.splitlines():
@@ -390,15 +412,18 @@ class VerificationReportGenerator:
                             diff_lines.append(f'<span class="diff-meta">{html.escape(dline)}</span>')
                     diff_html = f"""
                     <details style="margin-top: 8px;">
-                        <summary style="cursor: pointer; color: #fbbf24; font-size: 12px; font-weight: 600;">View Auto-Healing Diff (Attempt {last_log.attempt_number})</summary>
+                        <summary style="cursor: pointer; color: #fbbf24; font-size: 12px; font-weight: 600;">View Auto-Healing Diff ({html.escape(attempt_str)})</summary>
                         <div class="diff-container">{''.join(diff_lines)}</div>
                     </details>
                     """
+                elif logs:
+                    diff_html = f'<div style="font-size: 11px; color: #fbbf24; margin-top: 6px;">Healing attempted via {html.escape(model_used)} ({len(logs)} attempts)</div>'
 
             snip_backend = getattr(snip, "sandbox_backend", "") or ""
             snip_real_ver = getattr(snip, "real_runtime_version", "") or snip.version
             backend_info = f'<br><span style="font-size: 11px; color: var(--text-muted);">Backend: {html.escape(snip_backend)}</span>' if snip_backend else ''
             digest_info = f'<br><span style="font-size: 10px; color: var(--text-muted); font-family: monospace;">Digest: {html.escape(snip.image_digest[:16])}...</span>' if getattr(snip, "image_digest", "") else ''
+            source_info = f'<br><span style="font-size: 10px; color: #a78bfa; font-weight: 600;">[{html.escape(source_loc.replace("_", " ").title())}]</span>' if source_loc and source_loc != "slide_code" else ''
             wrapped_badge = '<div style="margin-top: 5px;"><span class="badge" style="background: rgba(147, 51, 234, 0.2); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4); font-size: 10px;">Wrapped (imports omitted)</span></div>' if getattr(snip, "was_wrapped", False) else ''
             runnable_details = f"""
             <details style="margin-top: 6px;">
@@ -413,6 +438,7 @@ class VerificationReportGenerator:
                             <strong>Slide {snip.slide_id}</strong><br>
                             <span style="font-size: 11px; color: var(--text-muted);">{html.escape(snip.id[:12])}</span><br>
                             <span style="font-size: 11px; color: #60a5fa;">{html.escape(snip.language)} {html.escape(snip_real_ver)}</span>
+                            {source_info}
                             {backend_info}
                             {digest_info}
                         </td>
@@ -687,6 +713,10 @@ class VerificationReportGenerator:
 
         # 2. Executive Summary Metrics Table
         total_snippets = len(snippets)
+        found_snippets = len(snippets)
+        executed_snippets = sum(1 for s in snippets if getattr(s, "was_executed", True))
+        unverified_snippets = sum(1 for s in snippets if not getattr(s, "was_executed", True))
+        non_det_snippets = sum(1 for s in snippets if getattr(s, "is_non_deterministic", False))
         passed_snippets = sum(1 for s in snippets if s.status in ["verified", "auto_healed"])
         healed_snippets = sum(1 for s in snippets if s.status in ["auto_healed", "healed", "fixed_auto"] or getattr(s, "auto_healed", False))
         needs_review = sum(1 for s in snippets if s.status == "needs_review")
@@ -700,9 +730,11 @@ class VerificationReportGenerator:
 
         summary_data = [
             ["Metric", "Value", "Metric", "Value"],
+            ["Found vs Executed", f"{found_snippets} found / {executed_snippets} run", "Unverified (Not Run)", f"{unverified_snippets}"],
             ["Snippets Verified", f"{passed_snippets}/{total_snippets}", "Auto-Healed", f"{healed_snippets}"],
-            ["Needs Review / Fail", f"{needs_review}", "Exercises Proven", f"{proven_exercises}/{len(exercise_proofs)}"],
-            ["Mutation Score", f"{int(avg_mutation_score * 100)}%", "Template QA Passed", f"{qa_passed}/{len(compliance_results)}"],
+            ["Needs Review / Fail", f"{needs_review}", "Non-Deterministic", f"{non_det_snippets}"],
+            ["Exercises Proven", f"{proven_exercises}/{len(exercise_proofs)}", "Mutation Score", f"{int(avg_mutation_score * 100)}%"],
+            ["Template QA Passed", f"{qa_passed}/{len(compliance_results)}", "Docker Backend Runs", f"{sum(1 for s in snippets if getattr(s, 'sandbox_backend', '') == 'docker')}"],
         ]
         sum_table = Table(summary_data, colWidths=[150, 120, 150, 120])
         sum_table.setStyle(

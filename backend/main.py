@@ -139,6 +139,21 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
         # 2. Generate Slides with Ollama LLM
         deck_schema = llm_generator.generate_deck(req, max_retries=3)
 
+        # 2b. Generate Notes Step after slide generation
+        record.status = "generating_notes"
+        record.status_message = "Generating per-slide trainer notes, examples, and timing allocations..."
+        db_session.commit()
+
+        from backend.materials.notes_generator import generate_notes_for_deck_slides
+        deck_schema.slides = generate_notes_for_deck_slides(
+            slides=deck_schema.slides,
+            topic=req.topic,
+            tech=req.tech,
+            tech_version=req.tech_version or "",
+            session_length=float(req.session_length),
+            student_level=req.student_level,
+        )
+
         # 3. Collision-free Layout Engine with PIL text measurement & auto-splitting
         record.status = "layout"
         record.status_message = "Executing collision-free layout engine and safe-zone solver..."
@@ -185,6 +200,9 @@ def process_deck_generation(deck_id: str, req: DeckCreateRequest, db_session: Se
         record.status = "completed"
         record.status_message = "Slide deck built and verified successfully!"
         record.slides_json = json.dumps([s.model_dump() for s in final_slides])
+        notes_list = [s.notes for s in final_slides if getattr(s, "notes", None)]
+        if notes_list:
+            record.professor_notes_json = json.dumps(notes_list)
         record.layout_logs_json = json.dumps(layout_logs)
         record.pptx_path = pptx_path
         record.preview_paths_json = json.dumps(preview_urls)

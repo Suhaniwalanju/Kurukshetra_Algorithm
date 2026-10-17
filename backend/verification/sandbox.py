@@ -36,6 +36,8 @@ class ExecutionResult:
     image_digest: str = ""
     classification: str = "PASS"  # "COMPILE_ERROR", "TEST_FAILURE", "RUNTIME_ERROR", "TIMEOUT", "PASS"
     was_wrapped: bool = False
+    is_non_deterministic: bool = False
+    non_deterministic_details: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -59,6 +61,8 @@ class ExecutionResult:
             "image_digest": self.image_digest,
             "classification": self.classification,
             "was_wrapped": self.was_wrapped,
+            "is_non_deterministic": self.is_non_deterministic,
+            "non_deterministic_details": self.non_deterministic_details,
         }
 
 
@@ -323,6 +327,10 @@ class SandboxExecutionEngine:
             elif r.deprecations or r.status == "warning":
                 dep_level = "warning"
 
+            final_exit_code = r.exit_code
+            if dep_level in ["warning", "removal"] and final_exit_code == 0:
+                final_exit_code = 1
+
             res = ExecutionResult(
                 snippet_id=snippet_id,
                 language=language,
@@ -330,7 +338,7 @@ class SandboxExecutionEngine:
                 source_code=source_code,
                 wrapped_code=wrapped,
                 command_executed=r.command,
-                exit_code=r.exit_code,
+                exit_code=final_exit_code,
                 stdout=r.stdout,
                 stderr=r.stderr,
                 compiler_output=r.compile_output,
@@ -386,9 +394,9 @@ class SandboxExecutionEngine:
                 f.write(wrapped_code)
 
             if language in ["java", "spring", "spring boot"]:
-                # 1. Compile with -Xlint:deprecation,removal
-                javac_cmd = ["javac", "-Xlint:deprecation,removal", "-encoding", "UTF-8", main_file]
-                result.command_executed = f"cd {tmpdir} && javac -Xlint:deprecation,removal {main_file} && java Main"
+                # 1. Compile with -Xlint:all -Werror --release 21
+                javac_cmd = ["javac", "-Xlint:all", "-Werror", "--release", "21", "-encoding", "UTF-8", main_file]
+                result.command_executed = f"cd {tmpdir} && javac -Xlint:all -Werror --release 21 {main_file} && java Main"
 
                 try:
                     comp_proc = subprocess.run(
@@ -449,8 +457,14 @@ class SandboxExecutionEngine:
                     result.stderr = f"[Sandbox Timeout: Process exceeded {timeout_sec}s limit and was safely killed (contained)]"
 
             elif language in ["python", "py"]:
-                run_cmd = [sys.executable, "-W", "default", main_file]
-                result.command_executed = f"python3 -W error::DeprecationWarning {main_file}"
+                run_cmd = [
+                    sys.executable,
+                    "-W", "error::DeprecationWarning",
+                    "-W", "error::PendingDeprecationWarning",
+                    "-W", "error::FutureWarning",
+                    main_file,
+                ]
+                result.command_executed = f"python3 -W error::DeprecationWarning -W error::PendingDeprecationWarning -W error::FutureWarning {main_file}"
                 try:
                     proc = subprocess.run(
                         run_cmd,
@@ -463,10 +477,14 @@ class SandboxExecutionEngine:
                     result.stdout = proc.stdout.strip()
                     result.stderr = proc.stderr.strip()
 
-                    # Check deprecation in python stderr
-                    if "DeprecationWarning" in result.stderr:
-                        result.deprecation_level = "warning"
-                        result.deprecation_details = result.stderr
+                    # Check deprecation in python stderr/stdout
+                    comb_py = (result.stderr or "") + "\n" + (result.stdout or "")
+                    for w in ["DeprecationWarning", "PendingDeprecationWarning", "FutureWarning"]:
+                        if w in comb_py:
+                            result.deprecation_level = "warning"
+                            result.deprecation_details = (result.deprecation_details + f"; {w} detected").strip("; ")
+                            if result.exit_code == 0:
+                                result.exit_code = 1
 
                     if "PermissionError" in result.stderr or "Network Access Denied" in result.stderr:
                         result.network_blocked = True
@@ -478,8 +496,8 @@ class SandboxExecutionEngine:
 
             elif language in ["javascript", "js", "node", "nodejs"]:
                 node_cmd = shutil.which("node") or "node"
-                run_cmd = [node_cmd, main_file]
-                result.command_executed = f"node {main_file}"
+                run_cmd = [node_cmd, "--throw-deprecation", main_file]
+                result.command_executed = f"node --throw-deprecation {main_file}"
                 try:
                     proc = subprocess.run(
                         run_cmd,
@@ -491,6 +509,14 @@ class SandboxExecutionEngine:
                     result.exit_code = proc.returncode
                     result.stdout = proc.stdout.strip()
                     result.stderr = proc.stderr.strip()
+
+                    comb_node = (result.stderr or "") + "\n" + (result.stdout or "")
+                    if "DeprecationWarning" in comb_node or "[DEP" in comb_node:
+                        result.deprecation_level = "warning"
+                        result.deprecation_details = (result.deprecation_details + "; Node deprecation detected").strip("; ")
+                        if result.exit_code == 0:
+                            result.exit_code = 1
+
                     if "Network Access Denied" in result.stderr:
                         result.network_blocked = True
                 except subprocess.TimeoutExpired:
@@ -627,13 +653,13 @@ class SandboxExecutionEngine:
             lang_lower = language.lower()
             if "java" in lang_lower or "spring" in lang_lower:
                 version_cmd = "java -version"
-                user_run_cmd = f"javac -Xlint:deprecation,removal {main_file} && java Main"
+                user_run_cmd = f"javac -Xlint:all -Werror --release 21 {main_file} && java Main"
             elif "python" in lang_lower or "py" in lang_lower:
                 version_cmd = "python3 --version"
-                user_run_cmd = f"python3 -W error::DeprecationWarning {main_file}"
+                user_run_cmd = f"python3 -W error::DeprecationWarning -W error::PendingDeprecationWarning -W error::FutureWarning {main_file}"
             elif "node" in lang_lower or "js" in lang_lower or "javascript" in lang_lower:
                 version_cmd = "node -v"
-                user_run_cmd = f"node {main_file}"
+                user_run_cmd = f"node --throw-deprecation {main_file}"
             else:
                 version_cmd = "python3 --version"
                 user_run_cmd = f"cat {main_file}"
@@ -679,6 +705,21 @@ class SandboxExecutionEngine:
 
                 if "java" in lang_lower:
                     self._check_java_deprecation(result, result.stderr)
+                elif "python" in lang_lower or "py" in lang_lower:
+                    comb_py = (result.stderr or "") + "\n" + (result.stdout or "")
+                    for w in ["DeprecationWarning", "PendingDeprecationWarning", "FutureWarning"]:
+                        if w in comb_py:
+                            result.deprecation_level = "warning"
+                            result.deprecation_details = (result.deprecation_details + f"; {w} detected").strip("; ")
+                            if result.exit_code == 0:
+                                result.exit_code = 1
+                elif "node" in lang_lower or "js" in lang_lower or "javascript" in lang_lower:
+                    comb_node = (result.stderr or "") + "\n" + (result.stdout or "")
+                    if "DeprecationWarning" in comb_node or "[DEP" in comb_node:
+                        result.deprecation_level = "warning"
+                        result.deprecation_details = (result.deprecation_details + "; Node deprecation detected").strip("; ")
+                        if result.exit_code == 0:
+                            result.exit_code = 1
 
             except subprocess.TimeoutExpired:
                 result.timed_out = True
@@ -692,15 +733,19 @@ class SandboxExecutionEngine:
         return result
 
     def _check_java_deprecation(self, result: ExecutionResult, compiler_out: str):
-        """Detects Java -Xlint:deprecation and removal warnings."""
+        """Detects Java -Xlint deprecation and removal warnings."""
         if not compiler_out:
             return
-        if "has been deprecated and marked for removal" in compiler_out:
+        if "has been deprecated and marked for removal" in compiler_out or "[removal]" in compiler_out:
             result.deprecation_level = "removal"
             result.deprecation_details = compiler_out
+            if result.exit_code == 0:
+                result.exit_code = 1
         elif "has been deprecated" in compiler_out or "[deprecation]" in compiler_out:
             result.deprecation_level = "warning"
             result.deprecation_details = compiler_out
+            if result.exit_code == 0:
+                result.exit_code = 1
 
     def execute_all_parallel(
         self,

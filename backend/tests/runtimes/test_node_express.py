@@ -97,3 +97,13 @@ def test_node_express_exercise_proof_reference_passes_naive_fails(node_runner):
     naive_res = node_runner.run_tests(exercise, naive_solution)
     assert naive_res.passed is False
     assert naive_res.failed_tests > 0
+
+
+def test_node_throw_deprecation_enforced(node_runner):
+    code = "process.emitWarning('This is deprecated', 'DeprecationWarning');"
+    res = node_runner.execute(code)
+    assert res.status == "fail"
+    assert res.exit_code != 0
+    assert any("DeprecationWarning" in d for d in res.deprecations) or "DeprecationWarning" in res.stderr
+    assert "--throw-deprecation" in res.command
+

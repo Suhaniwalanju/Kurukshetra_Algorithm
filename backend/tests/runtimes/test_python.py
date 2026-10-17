@@ -101,3 +101,40 @@ def test_python_exercise_proof_reference_passes_naive_fails(python_runner):
     naive_res = python_runner.run_tests(exercise, naive_solution)
     assert naive_res.passed is False
     assert naive_res.failed_tests > 0
+
+
+def test_python_deprecation_warning_fails(python_runner):
+    code = (
+        "import warnings\n"
+        "warnings.warn('Deprecated feature used', DeprecationWarning)\n"
+        "print('Should not reach here')\n"
+    )
+    res = python_runner.execute(code)
+    assert res.status == "fail"
+    assert res.exit_code != 0
+    assert any("DeprecationWarning" in d for d in res.deprecations) or "DeprecationWarning" in res.stderr
+
+
+def test_python_pending_deprecation_warning_fails(python_runner):
+    code = (
+        "import warnings\n"
+        "warnings.warn('Pending deprecation feature', PendingDeprecationWarning)\n"
+        "print('Should not reach here')\n"
+    )
+    res = python_runner.execute(code)
+    assert res.status == "fail"
+    assert res.exit_code != 0
+    assert any("PendingDeprecationWarning" in d for d in res.deprecations) or "PendingDeprecationWarning" in res.stderr
+
+
+def test_python_future_warning_fails(python_runner):
+    code = (
+        "import warnings\n"
+        "warnings.warn('Future change behavior', FutureWarning)\n"
+        "print('Should not reach here')\n"
+    )
+    res = python_runner.execute(code)
+    assert res.status == "fail"
+    assert res.exit_code != 0
+    assert any("FutureWarning" in d for d in res.deprecations) or "FutureWarning" in res.stderr
+

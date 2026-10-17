@@ -109,6 +109,9 @@ class SnippetRecord(Base):
     image_digest = Column(String(128), default="")
     classification = Column(String(32), default="PASS")  # COMPILE_ERROR, TEST_FAILURE, RUNTIME_ERROR, TIMEOUT, PASS
     was_wrapped = Column(Boolean, default=False)
+    was_executed = Column(Boolean, default=True)
+    is_non_deterministic = Column(Boolean, default=False)
+    source_location = Column(String(64), default="slide_code")  # slide_code, trainer_notes, quiz_item, cheat_sheet, exercise_starter
     attempts_count = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -146,6 +149,9 @@ class SnippetRecord(Base):
             "image_digest": getattr(self, "image_digest", "") or "",
             "classification": getattr(self, "classification", "PASS") or "PASS",
             "was_wrapped": bool(getattr(self, "was_wrapped", False)),
+            "was_executed": bool(getattr(self, "was_executed", True)),
+            "is_non_deterministic": bool(getattr(self, "is_non_deterministic", False)),
+            "source_location": getattr(self, "source_location", "slide_code") or "slide_code",
             "attempts_count": self.attempts_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -206,6 +212,7 @@ class HealingLogRecord(Base):
     original_code = Column(Text, default="")
     fixed_code = Column(Text, default="")
     diff = Column(Text, default="")
+    model_name = Column(String(64), default="qwen2.5:3b")
     success = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -231,6 +238,7 @@ class HealingLogRecord(Base):
             "fixed_code": self.fixed_code,
             "diff": self.diff,
             "diff_text": self.diff_text,
+            "model_name": getattr(self, "model_name", "qwen2.5:3b") or "qwen2.5:3b",
             "success": self.success,
             "healed_successfully": self.healed_successfully,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -355,10 +363,23 @@ def init_db():
             ("image_digest", "VARCHAR(128) DEFAULT ''"),
             ("classification", "VARCHAR(32) DEFAULT 'PASS'"),
             ("was_wrapped", "BOOLEAN DEFAULT 0"),
+            ("was_executed", "BOOLEAN DEFAULT 1"),
+            ("is_non_deterministic", "BOOLEAN DEFAULT 0"),
+            ("source_location", "VARCHAR(64) DEFAULT 'slide_code'"),
         ]
         for col, col_type in snippet_cols:
             try:
                 conn.execute(text(f"ALTER TABLE snippets ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
+
+        healing_cols = [
+            ("model_name", "VARCHAR(64) DEFAULT 'qwen2.5:3b'"),
+        ]
+        for col, col_type in healing_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE healing_logs ADD COLUMN {col} {col_type}"))
                 conn.commit()
             except Exception:
                 pass

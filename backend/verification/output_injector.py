@@ -36,6 +36,19 @@ class OutputInjector:
         snippet.image_digest = getattr(exec_result, "image_digest", "")
         snippet.classification = getattr(exec_result, "classification", "PASS")
         snippet.was_wrapped = getattr(exec_result, "was_wrapped", False)
+        snippet.is_non_deterministic = getattr(exec_result, "is_non_deterministic", False)
+
+        # Flag non-deterministic output: outputs that differ across runs are flagged instead of injected
+        if snippet.is_non_deterministic:
+            snippet.status = "needs_review"
+            note = f"Non-Deterministic Output: Run 1 and Run 2 produced different outputs ({getattr(exec_result, 'non_deterministic_details', '')})"
+            for slide in slides:
+                if slide.get("id") == snippet.slide_id:
+                    slide["non_deterministic"] = True
+                    slide["non_deterministic_note"] = "Non-deterministic output detected across runs"
+                    # Do NOT inject non-deterministic output
+                    break
+            return True, note
 
         # Check for mismatch
         def clean_val(v: str) -> str:
@@ -56,9 +69,9 @@ class OutputInjector:
 
         # Determine snippet status
         if exec_result.exit_code == 0:
-            if exec_result.deprecation_level == "removal":
+            if exec_result.deprecation_level in ["warning", "removal"] or exec_result.deprecation_details:
                 snippet.status = "failed"
-                note += " (Failed: Deprecation marked for removal)"
+                note += f" (Failed: Deprecation detected: {exec_result.deprecation_details or exec_result.deprecation_level})"
             elif getattr(exec_result, "sandbox_backend", "") == "docker":
                 snippet.status = "verified"
             else:

@@ -107,35 +107,49 @@ class VerificationCoordinator:
         )
 
         # -------------------------------------------------------------
-        # STEP 2: Parallel Sandbox Execution
+        # STEP 2: Parallel Sandbox Execution (Double run for determinism)
         # -------------------------------------------------------------
+        executable_snippets = [s for s in snippets if getattr(s, "was_executed", True)]
         self._publish_event(
             deck_id,
             "executing",
-            f"Running {len(snippets)} snippets in isolated sandbox (network none, 20s timeout)...",
+            f"Running {len(executable_snippets)} executable snippets twice in isolated sandbox to verify determinism...",
             30,
-            {"snippet_count": len(snippets)},
+            {"snippet_count": len(executable_snippets)},
         )
 
         runs = []
         exec_results_by_id: Dict[str, ExecutionResult] = {}
-        if snippets:
+        if executable_snippets:
             # Extract plain fields to avoid concurrent ORM attribute access in worker threads
             snip_items = [
                 (snip.id, snip.language, snip.source_code, snip.version)
-                for snip in snippets
+                for snip in executable_snippets
             ]
-            snip_by_id = {snip.id: snip for snip in snippets}
+            snip_by_id = {snip.id: snip for snip in executable_snippets}
 
             def _run_one(item: Tuple[str, str, str, str]) -> Tuple[str, ExecutionResult]:
                 s_id, s_lang, s_code, s_ver = item
-                res = sandbox_engine.run_snippet(
+                # Run 1
+                res1 = sandbox_engine.run_snippet(
                     snippet_id=s_id,
                     language=s_lang,
                     source_code=s_code,
                     version=s_ver,
                 )
-                return s_id, res
+                # Run 2: determinism check
+                res2 = sandbox_engine.run_snippet(
+                    snippet_id=f"{s_id}_det_check",
+                    language=s_lang,
+                    source_code=s_code,
+                    version=s_ver,
+                )
+                out1 = (res1.stdout or "").strip()
+                out2 = (res2.stdout or "").strip()
+                if out1 != out2:
+                    res1.is_non_deterministic = True
+                    res1.non_deterministic_details = f"Run 1: '{out1}' vs Run 2: '{out2}'"
+                return s_id, res1
 
             with ThreadPoolExecutor(max_workers=min(4, max(1, len(snip_items)))) as executor:
                 run_pairs = list(executor.map(_run_one, snip_items))

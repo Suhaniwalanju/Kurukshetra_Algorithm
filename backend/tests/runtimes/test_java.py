@@ -28,7 +28,7 @@ def test_java_compile_error_cleanly_reported(java_runner):
 
 
 def test_java_runtime_error_captured(java_runner):
-    runtime_err = 'int x = 10 / 0;'
+    runtime_err = 'int zero = Integer.parseInt("0"); int x = 10 / zero;'
     res = java_runner.execute(runtime_err)
     assert res.status == "fail"
     assert res.exit_code != 0
@@ -106,4 +106,14 @@ def test_java_deprecation_handling(java_runner):
     res = java_runner.execute(code)
     # Should flag removal as failure
     assert res.status == "fail"
-    assert len(res.deprecations) > 0 or res.exit_code != 0
+    assert res.exit_code != 0
+    assert len(res.deprecations) > 0 or "deprecation" in res.compile_output.lower() or "error" in res.stderr.lower()
+
+
+def test_java_compiler_flags_enforced(java_runner):
+    code = 'System.out.println("Checking flags");'
+    res = java_runner.execute(code)
+    assert "-Xlint:all" in res.command
+    assert "-Werror" in res.command
+    assert "--release 21" in res.command
+

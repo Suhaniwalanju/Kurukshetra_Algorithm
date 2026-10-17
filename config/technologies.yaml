@@ -13,15 +13,23 @@ technologies:
       - "pip install --no-index --find-links=/wheels pytest"
     compile_commands: []
     run_commands:
-      - "python3 -W error::DeprecationWarning main.py"
+      - "python3 -W error::DeprecationWarning -W error::PendingDeprecationWarning -W error::FutureWarning main.py"
     test_commands:
       - "pytest -q test_runner.py"
     lint_flags:
       - "-W"
       - "error::DeprecationWarning"
+      - "-W"
+      - "error::PendingDeprecationWarning"
+      - "-W"
+      - "error::FutureWarning"
     deprecation_flags:
       - "-W"
       - "error::DeprecationWarning"
+      - "-W"
+      - "error::PendingDeprecationWarning"
+      - "-W"
+      - "error::FutureWarning"
     output_type: "text"
     trusted_docs_domains:
       - "docs.python.org"
@@ -36,16 +44,21 @@ technologies:
     main_file: "Main.java"
     setup_commands: []
     compile_commands:
-      - "javac -Xlint:deprecation,removal -encoding UTF-8 Main.java"
+      - "javac -Xlint:all -Werror --release 21 -encoding UTF-8 Main.java"
     run_commands:
       - "java -ea Main"
     test_commands:
-      - "javac -cp .:junit-platform-console-standalone.jar -Xlint:deprecation,removal TestRunner.java && java -jar junit-platform-console-standalone.jar --class-path . --scan-class-path"
+      - "javac -cp .:junit-platform-console-standalone.jar -Xlint:all -Werror --release 21 TestRunner.java && java -jar junit-platform-console-standalone.jar --class-path . --scan-class-path"
     lint_flags:
-      - "-Xlint:deprecation,removal"
+      - "-Xlint:all"
+      - "-Werror"
+      - "--release"
+      - "21"
     deprecation_flags:
-      - "-Xlint:deprecation"
-      - "-Xlint:removal"
+      - "-Xlint:all"
+      - "-Werror"
+      - "--release"
+      - "21"
     output_type: "text"
     trusted_docs_domains:
       - "docs.oracle.com"
@@ -129,10 +142,11 @@ technologies:
     setup_commands: []
     compile_commands: []
     run_commands:
-      - "node test_harness.js"
+      - "node --throw-deprecation test_harness.js"
     test_commands:
-      - "node --test test.js"
-    lint_flags: []
+      - "node --throw-deprecation --test test.js"
+    lint_flags:
+      - "--throw-deprecation"
     deprecation_flags:
       - "--throw-deprecation"
     output_type: "http_json"

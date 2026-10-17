@@ -22,7 +22,7 @@ class PythonRunner(LanguageRunner):
     """
     Python 3.12 Runtime Adapter.
     Executes Python scripts and pytest suites inside isolated containers or hardened subprocessing.
-    Enforces -W error::DeprecationWarning, network containment, and 20s timeout limits.
+    Enforces -W error::DeprecationWarning -W error::PendingDeprecationWarning -W error::FutureWarning, network containment, and 20s timeout limits.
     """
 
     def prepare(self, snippet: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
@@ -35,7 +35,7 @@ class PythonRunner(LanguageRunner):
 
     def execute(self, snippet: str, timeout_sec: int = 20, options: Optional[Dict[str, Any]] = None) -> RunResult:
         files = self.prepare(snippet, options)
-        command = "python3 -W error::DeprecationWarning main.py"
+        command = "python3 -W error::DeprecationWarning -W error::PendingDeprecationWarning -W error::FutureWarning main.py"
 
         if self.is_docker_available():
             res = self.run_in_docker(files, command, timeout_sec=timeout_sec, network="none")
@@ -65,8 +65,14 @@ class PythonRunner(LanguageRunner):
                 )
 
             # 2. Run with deprecation checking
-            # We pass -W error::DeprecationWarning
-            run_cmd = [sys.executable, "-W", "error::DeprecationWarning", "main.py"]
+            # We pass -W error for DeprecationWarning, PendingDeprecationWarning, and FutureWarning
+            run_cmd = [
+                sys.executable,
+                "-W", "error::DeprecationWarning",
+                "-W", "error::PendingDeprecationWarning",
+                "-W", "error::FutureWarning",
+                "main.py",
+            ]
             try:
                 proc = subprocess.run(
                     run_cmd,
@@ -113,13 +119,21 @@ class PythonRunner(LanguageRunner):
                 )
 
     def _analyze_python_deprecations(self, res: RunResult):
-        combined = res.stderr + "\n" + res.stdout
+        combined = (res.stderr or "") + "\n" + (res.stdout or "")
+        dep_types = []
         if "DeprecationWarning" in combined:
-            res.deprecations.append("DeprecationWarning detected")
-            if res.exit_code != 0:
-                res.status = "fail"
-            else:
-                res.status = "warning"
+            dep_types.append("DeprecationWarning")
+        if "PendingDeprecationWarning" in combined:
+            dep_types.append("PendingDeprecationWarning")
+        if "FutureWarning" in combined:
+            dep_types.append("FutureWarning")
+
+        if dep_types:
+            for dt in dep_types:
+                res.deprecations.append(f"{dt} detected")
+            res.status = "fail"
+            if res.exit_code == 0:
+                res.exit_code = 1
 
     def run_tests(self, exercise: Dict[str, Any], solution: str, timeout_sec: int = 20) -> TestResult:
         """

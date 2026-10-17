@@ -28,6 +28,7 @@ class ProfessorNote(BaseModel):
     likely_questions: List[Dict[str, str]] = Field(default_factory=list)
     fallback_output: str = ""
     predicted_mistakes: List[PredictedMistake] = Field(default_factory=list)
+    notes_json: Optional[Dict[str, Any]] = None
 
 
 class QuizQuestion(BaseModel):

@@ -80,9 +80,27 @@ def regenerate_single_slide(
     test_deck["slides"][slide_index] = new_slide
     layout_logs, _ = validate_deck_layout(test_deck)
 
+    # 4b. Regenerate notes for this single slide ONLY
+    from backend.materials.notes_generator import generate_notes_for_slide
+    session_length = float(deck_record.session_length or 30.0)
+    total_slides = max(1, len(slides))
+    old_timing = float((original_slide.get("notes") or {}).get("timing_minutes", session_length / total_slides))
+
+    new_slide_notes = generate_notes_for_slide(
+        slide=new_slide,
+        topic=deck_record.topic,
+        tech=tech,
+        tech_version=deck_record.tech_version or "",
+        target_timing=old_timing,
+        session_length=session_length,
+    )
+    new_slide["notes"] = new_slide_notes
+
     # 5. Commit updated slide array to DB (all other slides untouched)
     slides[slide_index] = new_slide
     deck_record.slides_json = json.dumps(slides)
+    if any(s.get("notes") for s in slides if isinstance(s, dict)):
+        deck_record.professor_notes_json = json.dumps([s.get("notes") for s in slides if isinstance(s, dict) and s.get("notes")])
 
     # 6. Re-render preview for this slide ONLY
     previews = json.loads(deck_record.preview_paths_json) if deck_record.preview_paths_json else []

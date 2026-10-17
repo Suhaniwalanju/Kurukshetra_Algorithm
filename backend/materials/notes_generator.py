@@ -1,8 +1,336 @@
+import json
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional, Union
 from backend.materials.models import StudentNote, ProfessorNote
 from backend.materials.student_mistake_predictor import generate_predicted_mistakes
+from backend.materials.topic_retriever import topic_retriever
 from backend.runtimes.registry import runtime_registry
+
+
+def validate_timing(notes: List[Dict[str, Any]], session_length: float) -> Tuple[bool, float, str]:
+    """
+    Validates that total timing across all slide notes is within 10% of session length.
+    Condition: 0.90 * session_length <= total_timing <= 1.10 * session_length
+    """
+    if not notes or session_length <= 0:
+        return True, 0.0, "Empty notes or invalid session length."
+
+    total_timing = sum(float(n.get("timing_minutes", 0)) for n in notes if isinstance(n, dict))
+    lower = 0.90 * session_length
+    upper = 1.10 * session_length
+    is_valid = lower <= total_timing <= upper
+
+    if not is_valid:
+        diff_pct = abs(total_timing - session_length) / session_length * 100
+        msg = (
+            f"Total timing {total_timing:.1f}m is not within 10% of session length {session_length:.1f}m "
+            f"(allowed: {lower:.1f}m - {upper:.1f}m, diff: {diff_pct:.1f}%)"
+        )
+        return False, total_timing, msg
+
+    return True, total_timing, f"Total timing {total_timing:.1f}m is within 10% of session length {session_length:.1f}m."
+
+
+def _calculate_slide_timings(slides: List[Any], session_length: float) -> List[float]:
+    """Computes initial target timing distribution across slides summing to session_length."""
+    num_slides = max(1, len(slides))
+    if num_slides == 1:
+        return [float(session_length)]
+
+    types = []
+    for s in slides:
+        st = s.get("type", "concept") if isinstance(s, dict) else getattr(s, "type", "concept")
+        types.append(st)
+
+    short_time = max(1.0, min(3.0, round(session_length * 0.05, 1)))
+    content_indices = []
+    timings = []
+    total_short = 0.0
+
+    for idx, st in enumerate(types):
+        if st in ["cover", "agenda", "summary", "closing"]:
+            timings.append(short_time)
+            total_short += short_time
+        else:
+            timings.append(0.0)
+            content_indices.append(idx)
+
+    rem_time = max(0.0, session_length - total_short)
+    if content_indices:
+        time_per_content = round(rem_time / len(content_indices), 1)
+        for c_idx in content_indices:
+            timings[c_idx] = time_per_content
+    else:
+        time_per_slide = round(session_length / num_slides, 1)
+        timings = [time_per_slide] * num_slides
+
+    delta = session_length - sum(timings)
+    timings[0] = round(timings[0] + delta, 1)
+    return timings
+
+
+def generate_notes_for_slide(
+    slide: Union[Dict[str, Any], Any],
+    topic: str,
+    tech: str,
+    tech_version: str = "",
+    target_timing: float = 3.0,
+    session_length: float = 45.0,
+    retrieved_chunks: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Produces JSON notes for a single slide:
+    - talking_points (max 4)
+    - one example (with a code_ref if code is needed)
+    - common_mistakes (max 2)
+    - ask_the_class (one question)
+    - timing_minutes
+
+    Uses ONLY the slide content and retrieved topic chunks for facts.
+    """
+    slide_dict = slide if isinstance(slide, dict) else slide.model_dump()
+    title = slide_dict.get("title", "Slide Concept")
+    slide_type = slide_dict.get("type", "concept")
+    bullets = slide_dict.get("bullets", [])
+
+    code = ""
+    c = slide_dict.get("code")
+    if isinstance(c, dict):
+        code = c.get("source", "")
+    elif hasattr(c, "source"):
+        code = c.source
+    elif isinstance(c, str):
+        code = c
+
+    # Retrieve factual topic chunks
+    if retrieved_chunks is None:
+        retrieved_chunks = topic_retriever.retrieve_chunks_for_slide(slide_dict, topic, tech, top_k=4)
+
+    chunks_text = "\n---\n".join(retrieved_chunks) if retrieved_chunks else "No specific external topic chunks retrieved."
+
+    system_prompt = (
+        "You are an expert computer science professor producing structured trainer notes for slides.\n"
+        "CRITICAL RULE: Use ONLY the provided slide content and the retrieved topic chunks for facts. "
+        "Do NOT invent or extrapolate facts, APIs, parameters, or specifications not found in these sources.\n"
+        "Return ONLY a raw JSON object with no markdown fences, no explanations outside the JSON."
+    )
+    user_prompt = f"""Generate slide notes for this slide:
+Title: {title}
+Category: {slide_type}
+Bullets: {bullets}
+Slide Code: {code if code else 'None'}
+
+Retrieved Topic Chunks (FACTUAL REFERENCE):
+{chunks_text}
+
+Session Length: {session_length} minutes. Target timing for this slide: {target_timing:.1f} minutes.
+
+Output JSON with this exact schema:
+{{
+  "talking_points": ["point 1", "point 2"], // MAXIMUM 4 items
+  "example": {{
+    "description": "One concise practical example",
+    "code_ref": "code reference or fragment if code is needed, else null"
+  }},
+  "common_mistakes": ["mistake 1"], // MAXIMUM 2 items
+  "ask_the_class": "One question to ask the class?",
+  "timing_minutes": {target_timing:.1f}
+}}"""
+
+    raw_json = None
+    try:
+        from backend.llm_generator import llm_generator
+        resp = llm_generator._call_ollama(system_prompt, user_prompt)
+        m = re.search(r"\{[\s\S]*\}", resp)
+        if m:
+            raw_json = json.loads(m.group(0))
+    except Exception:
+        raw_json = None
+
+    return _sanitize_and_fallback_notes(
+        raw_json=raw_json,
+        slide_dict=slide_dict,
+        topic=topic,
+        tech=tech,
+        target_timing=target_timing,
+        retrieved_chunks=retrieved_chunks,
+    )
+
+
+def _sanitize_and_fallback_notes(
+    raw_json: Optional[Dict[str, Any]],
+    slide_dict: Dict[str, Any],
+    topic: str,
+    tech: str,
+    target_timing: float,
+    retrieved_chunks: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Ensures structure adheres strictly to requirements and factual topic chunks."""
+    title = slide_dict.get("title", "Concept")
+    slide_type = slide_dict.get("type", "concept")
+    bullets = slide_dict.get("bullets", [])
+    code = ""
+    c = slide_dict.get("code")
+    if isinstance(c, dict):
+        code = c.get("source", "")
+    elif hasattr(c, "source"):
+        code = c.source
+    elif isinstance(c, str):
+        code = c
+
+    talking_points = []
+    example = {}
+    common_mistakes = []
+    ask_the_class = ""
+    timing_minutes = float(target_timing)
+
+    if isinstance(raw_json, dict):
+        tp = raw_json.get("talking_points", [])
+        if isinstance(tp, list) and tp:
+            talking_points = [str(p).strip() for p in tp[:4] if str(p).strip()]
+
+        ex = raw_json.get("example")
+        if isinstance(ex, dict):
+            code_ref_val = str(ex.get("code_ref", "")).strip() if ex.get("code_ref") else (code.strip() if code else None)
+            if slide_type in ["cover", "agenda", "closing", "summary"] and not code:
+                code_ref_val = None
+            example = {
+                "description": str(ex.get("description", f"Practical application of {title}")).strip(),
+                "code_ref": code_ref_val,
+            }
+        elif isinstance(ex, str) and ex.strip():
+            code_ref_val = code.strip() if (code and slide_type not in ["cover", "agenda", "closing", "summary"]) else None
+            example = {
+                "description": ex.strip(),
+                "code_ref": code_ref_val,
+            }
+
+        cm = raw_json.get("common_mistakes", [])
+        if isinstance(cm, list) and cm:
+            common_mistakes = [str(m).strip() for m in cm[:2] if str(m).strip()]
+
+        atc = raw_json.get("ask_the_class")
+        if isinstance(atc, str) and atc.strip():
+            ask_the_class = atc.strip()
+
+        try:
+            parsed_tm = float(raw_json.get("timing_minutes", target_timing))
+            if parsed_tm > 0:
+                timing_minutes = parsed_tm
+        except Exception:
+            timing_minutes = float(target_timing)
+
+    # Fallbacks based strictly on slide content and retrieved chunks
+    if not talking_points:
+        points = [f"Introduce {title} in the context of {tech}."]
+        for b in bullets[:3]:
+            points.append(f"Emphasize: {b}")
+        if retrieved_chunks and len(points) < 4:
+            first_chunk_sentence = retrieved_chunks[0].split(".")[0].strip()
+            if first_chunk_sentence:
+                points.append(f"Key reference insight: {first_chunk_sentence[:90]}.")
+        talking_points = points[:4]
+
+    if not example:
+        if code:
+            example = {
+                "description": f"Demonstrating {title} syntax and execution flow in {tech}.",
+                "code_ref": code.strip(),
+            }
+        else:
+            example = {
+                "description": f"Architectural use case for {title} in enterprise {tech} systems.",
+                "code_ref": None,
+            }
+
+    if not common_mistakes:
+        if code or slide_type in ["code", "exercise"]:
+            common_mistakes = [
+                f"Overlooking boundary conditions or null checks when working with {title.lower()}.",
+                f"Assuming default runtime configuration suffices without testing under concurrent load."
+            ]
+        else:
+            common_mistakes = [
+                f"Confusing syntactic shorthand with runtime semantics in {tech}."
+            ]
+    common_mistakes = common_mistakes[:2]
+
+    if not ask_the_class:
+        if code:
+            ask_the_class = f"What output or error would be produced if the input data were empty in this {title.lower()} snippet?"
+        else:
+            ask_the_class = f"How does {title.lower()} impact maintainability and performance in production {tech}?"
+
+    if not ask_the_class.endswith("?"):
+        ask_the_class += "?"
+
+    return {
+        "talking_points": talking_points[:4],
+        "example": example,
+        "common_mistakes": common_mistakes[:2],
+        "ask_the_class": ask_the_class,
+        "timing_minutes": round(timing_minutes, 1),
+    }
+
+
+def generate_notes_for_deck_slides(
+    slides: List[Any],
+    topic: str,
+    tech: str,
+    tech_version: str = "",
+    session_length: float = 45.0,
+    student_level: str = "Beginner",
+    max_regeneration_attempts: int = 3,
+) -> List[Any]:
+    """
+    Generates notes per slide using only slide content and retrieved topic chunks.
+    Validates total timing is within 10% of session length and regenerates if not.
+    Stores notes per slide so a single slide can be regenerated without touching others.
+    """
+    target_timings = _calculate_slide_timings(slides, session_length)
+
+    for attempt in range(1, max_regeneration_attempts + 1):
+        all_notes = []
+        for idx, slide in enumerate(slides):
+            t_timing = target_timings[idx]
+            slide_note = generate_notes_for_slide(
+                slide=slide,
+                topic=topic,
+                tech=tech,
+                tech_version=tech_version,
+                target_timing=t_timing,
+                session_length=session_length,
+            )
+            # Store notes per slide
+            if isinstance(slide, dict):
+                slide["notes"] = slide_note
+            else:
+                slide.notes = slide_note
+            all_notes.append(slide_note)
+
+        # Validate total timing is within 10% of session length
+        is_valid, total_timing, msg = validate_timing(all_notes, session_length)
+        if is_valid:
+            return slides
+
+        # Re-scale target timings and regenerate
+        scale = session_length / max(0.1, total_timing)
+        target_timings = [round(t * scale, 1) for t in target_timings]
+
+    # Final normalization guarantee
+    all_notes = [s["notes"] if isinstance(s, dict) else s.notes for s in slides]
+    total_timing = sum(float(n.get("timing_minutes", 0)) for n in all_notes)
+    if total_timing > 0 and (total_timing < 0.90 * session_length or total_timing > 1.10 * session_length):
+        scale = session_length / total_timing
+        for idx, s in enumerate(slides):
+            note_obj = s["notes"] if isinstance(s, dict) else s.notes
+            note_obj["timing_minutes"] = round(float(note_obj.get("timing_minutes", 1.0)) * scale, 1)
+        diff = session_length - sum(float((s["notes"] if isinstance(s, dict) else s.notes)["timing_minutes"]) for s in slides)
+        first_note = slides[0]["notes"] if isinstance(slides[0], dict) else slides[0].notes
+        first_note["timing_minutes"] = round(float(first_note["timing_minutes"]) + diff, 1)
+
+    return slides
+
 
 
 def generate_notes_for_deck(
@@ -145,14 +473,18 @@ def generate_notes_for_deck(
             ex_data = exercise or {"problem_statement": title, "code": verified_code}
             predicted_mistakes = generate_predicted_mistakes(ex_data, tech)
 
+        slide_note_data = slide.get("notes") if isinstance(slide, dict) else getattr(slide, "notes", None)
+        prof_timing = int(round(slide_note_data.get("timing_minutes", timing_per_slide))) if slide_note_data else timing_per_slide
+
         prof_note = ProfessorNote(
             slide_id=slide_id,
             title=title,
             talking_points=talking_points,
-            timing_minutes=timing_per_slide,
+            timing_minutes=prof_timing,
             likely_questions=likely_questions,
             fallback_output=real_output or "Expected output verified cleanly.",
-            predicted_mistakes=predicted_mistakes
+            predicted_mistakes=predicted_mistakes,
+            notes_json=slide_note_data,
         )
         professor_notes.append(prof_note)
 

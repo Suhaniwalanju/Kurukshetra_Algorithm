@@ -689,3 +689,396 @@ def test_slide_generation_prompt_option_include_own_imports():
     assert req_without_imports.include_own_imports is False
 
 
+def test_deprecation_makes_snippet_fail_and_enter_healing():
+    """
+    Verifies that:
+    1. Any deprecation warning makes the snippet status 'failed' in OutputInjector.
+    2. Any deprecation causes the snippet to enter the self-healing loop.
+    3. Re-verification with deprecation is rejected (is_success is False).
+    4. Python snippets with DeprecationWarning, PendingDeprecationWarning, and FutureWarning fail execution.
+    """
+    from backend.verification.output_injector import OutputInjector
+    from backend.verification.sandbox import ExecutionResult
+
+    injector = OutputInjector()
+    snippet = SnippetRecord(
+        id="snip_dep_test",
+        deck_id="deck_dep_1",
+        slide_id=2,
+        language="python",
+        version="3.12",
+        source_code="import warnings; warnings.warn('test', FutureWarning)",
+        expected_output="ok",
+    )
+    slides = [{"id": 2, "type": "code", "code": {"source": snippet.source_code, "expected_output": ""}}]
+
+    # Execution returned exit code 0 but has deprecation warning
+    res = ExecutionResult(
+        snippet_id="snip_dep_test",
+        language="python",
+        version="3.12",
+        source_code=snippet.source_code,
+        wrapped_code=snippet.source_code,
+        command_executed="python3 main.py",
+        exit_code=0,
+        stdout="ok",
+        deprecation_level="warning",
+        deprecation_details="FutureWarning detected",
+        sandbox_backend="docker",
+    )
+
+    injector.inject_real_output(slides, snippet, res)
+    assert snippet.status == "failed"
+    assert "Deprecation detected" in snippet.actual_output or "Deprecation detected" in slides[0]["code"].get("expected_output", "") or "Failed" in snippet.actual_output or snippet.status == "failed"
+
+    # Test Sandbox Runner flags
+    py_res = sandbox_engine.run_snippet(
+        snippet_id="test_py_dep",
+        language="python",
+        source_code="import warnings; warnings.warn('obsolete API', DeprecationWarning)",
+        version="3.12",
+    )
+    assert py_res.exit_code != 0
+    assert py_res.deprecation_level == "warning" or "DeprecationWarning" in py_res.stderr
+
+    py_fut = sandbox_engine.run_snippet(
+        snippet_id="test_py_fut",
+        language="python",
+        source_code="import warnings; warnings.warn('future change', FutureWarning)",
+        version="3.12",
+    )
+    assert py_fut.exit_code != 0
+    assert py_fut.deprecation_level == "warning" or "FutureWarning" in py_fut.stderr
+
+    py_pend = sandbox_engine.run_snippet(
+        snippet_id="test_py_pend",
+        language="python",
+        source_code="import warnings; warnings.warn('pending change', PendingDeprecationWarning)",
+        version="3.12",
+    )
+    assert py_pend.exit_code != 0
+    assert py_pend.deprecation_level == "warning" or "PendingDeprecationWarning" in py_pend.stderr
+
+    # Test Java runner flags
+    java_res = sandbox_engine.run_snippet(
+        snippet_id="test_java_flags",
+        language="java",
+        source_code='System.out.println("Testing javac flags");',
+        version="21",
+    )
+    assert "-Xlint:all" in java_res.command_executed
+    assert "-Werror" in java_res.command_executed
+    assert "--release 21" in java_res.command_executed
+
+    # Test Node runner flags
+    node_res = sandbox_engine.run_snippet(
+        snippet_id="test_node_flags",
+        language="javascript",
+        source_code='console.log("Testing node flags");',
+        version="20",
+    )
+    assert "--throw-deprecation" in node_res.command_executed
+
+
+def test_extractor_scans_trainer_notes_quiz_cheat_sheet_starter_code_found_vs_executed():
+    """
+    Verifies that the extractor scans trainer notes, quiz items, cheat sheet,
+    and exercise starter code for fenced and inline code, marks unexecuted code as unverified,
+    and accurately computes found vs executed counts.
+    """
+    from backend.verification.extractor import snippet_extractor, extract_fenced_and_inline_code
+
+    # 1. Test helper regex on fenced and inline code
+    sample_text = (
+        "Here is inline `Arrays.sort(arr)` and also `var count = 10;`.\n"
+        "Here is a fenced block:\n"
+        "```java\n"
+        "List<String> list = List.of(\"a\", \"b\");\n"
+        "```\n"
+        "And another inline `System.gc()`."
+    )
+    extracted_blocks = extract_fenced_and_inline_code(sample_text)
+    codes = [c[0] for c in extracted_blocks]
+    assert 'Arrays.sort(arr)' in codes
+    assert 'var count = 10;' in codes
+    assert 'List<String> list = List.of("a", "b");' in codes
+    assert 'System.gc()' in codes
+
+    # 2. Test slide deck scanning
+    deck_id = "test_deck_scan_1"
+    slides = [
+        {
+            "id": 1,
+            "type": "cover",
+            "title": "Java 21 Masterclass",
+            "bullets": ["Intro"],
+            "trainer_notes": "Mention `Thread.ofVirtual().start(runnable)` in your intro speech.",
+        },
+        {
+            "id": 2,
+            "type": "code",
+            "title": "Virtual Threads Demo",
+            "code": {
+                "language": "java",
+                "version": "21",
+                "source": "System.out.println(\"Virtual thread executing\");",
+                "expected_output": "Virtual thread executing",
+            },
+            "speaker_hint": "Check `Executors.newVirtualThreadPerTaskExecutor()`.",
+        },
+        {
+            "id": 3,
+            "type": "exercise",
+            "title": "Exercise 1",
+            "exercise_starter_code": "public class ExerciseStarter {\n    // TODO: implement\n}",
+            "trainer_notes": "```java\nint x = 42;\n```",
+        },
+    ]
+
+    quiz_items = [
+        {
+            "slide_id": 2,
+            "code_snippet": "boolean b = Thread.currentThread().isVirtual();",
+            "question": "What is returned by `isVirtual()`?",
+            "explanation": "See `java.lang.Thread` docs.",
+        }
+    ]
+
+    cheat_sheet_data = {
+        "syntax_cards": [{"syntax": "Thread.startVirtualThread(() -> {});"}],
+        "tiny_example": {"code": "var t = Thread.ofVirtual().unstarted(() -> {});"},
+        "pitfalls": [{"pitfall": "Do not pool `VirtualThread`", "prevention": "Use `Executors.newVirtualThreadPerTaskExecutor()`"}],
+    }
+
+    snippets = snippet_extractor.extract_snippets_from_deck(
+        deck_id=deck_id,
+        slides=slides,
+        quiz_items=quiz_items,
+        cheat_sheet_data=cheat_sheet_data,
+        default_tech="Java",
+        default_version="21",
+    )
+
+    # Check executable vs unverified snippets
+    executed_snippets = [s for s in snippets if s.was_executed]
+    unverified_snippets = [s for s in snippets if not s.was_executed]
+
+    assert len(executed_snippets) == 1
+    assert executed_snippets[0].source_location == "slide_code"
+    assert executed_snippets[0].status == "pending"
+
+    # All others must be marked unverified
+    for u in unverified_snippets:
+        assert u.was_executed is False
+        assert u.status == "unverified"
+        assert u.source_location in ["trainer_notes", "exercise_starter", "quiz_item", "cheat_sheet"]
+
+    # Check found vs executed counts
+    counts = snippet_extractor.get_found_vs_executed_counts(snippets)
+    assert counts["found"] == len(snippets)
+    assert counts["executed"] == 1
+    assert counts["unverified"] == len(snippets) - 1
+    assert counts["found"] >= 7
+
+
+def test_healing_loop_rejection_rules():
+    """
+    Verifies that the self-healing loop rejects fixes when:
+    1. The fix shrinks the code by more than 40%.
+    2. The fix removes identifiers or APIs named in the slide title.
+    3. The fix edits or removes test assertions.
+    """
+    from backend.verification.healing_loop import healing_loop
+
+    # 1. Test Rule 1: Shrinkage > 40%
+    original_code = "System.out.println(\"Long detailed implementation of algorithm\");\nint x = 100;\nint y = 200;\nint z = x + y;"
+    shrunk_code = "int z = 300;"  # Shrunk by > 70%
+    reason_shrink = healing_loop._validate_fix(
+        orig_code=original_code,
+        current_code=original_code,
+        fixed_code=shrunk_code,
+        slide={"title": "Math Computation"},
+    )
+    assert reason_shrink is not None
+    assert "Code shrunk by more than 40%" in reason_shrink
+
+    # 2. Test Rule 2: Removes identifiers or APIs named in the slide title
+    title_slide = {"title": "Streams filter() API and CompletableFuture"}
+    code_with_api = "List<Integer> list = List.of(1, 2, 3);\nlist.stream().filter(n -> n > 1).forEach(System.out::println);"
+    # Fix deletes filter
+    code_missing_api = "List<Integer> list = List.of(1, 2, 3);\nlist.forEach(System.out::println);"
+    reason_title = healing_loop._validate_fix(
+        orig_code=code_with_api,
+        current_code=code_with_api,
+        fixed_code=code_missing_api,
+        slide=title_slide,
+    )
+    assert reason_title is not None
+    assert "removed identifier/api 'filter' named in slide title" in reason_title.lower()
+
+    # 3. Test Rule 3: Edits tests
+    code_with_tests = (
+        "def add(a, b):\n"
+        "    return a + b\n\n"
+        "assert add(2, 3) == 5\n"
+        "assert add(-1, 1) == 0\n"
+    )
+    # Fix modifies or weakens test assertions
+    code_tampered_tests = (
+        "def add(a, b):\n"
+        "    return 5\n\n"
+        "assert add(2, 3) == 5\n"
+    )
+    reason_test = healing_loop._validate_fix(
+        orig_code=code_with_tests,
+        current_code=code_with_tests,
+        fixed_code=code_tampered_tests,
+        slide={"title": "Unit Testing Functions"},
+    )
+    assert reason_test is not None
+    assert "test assertion" in reason_test.lower()
+
+    # 4. Valid fix passes all checks
+    valid_fixed_code = (
+        "def add(a, b):\n"
+        "    return a + b\n\n"
+        "assert add(2, 3) == 5\n"
+        "assert add(-1, 1) == 0\n"
+    )
+    assert healing_loop._validate_fix(
+        orig_code=code_with_tests,
+        current_code=code_with_tests,
+        fixed_code=valid_fixed_code,
+        slide={"title": "Unit Testing Functions"},
+    ) is None
+
+
+def test_healing_loop_gemini_adapter_retry_after_2_failed_attempts_and_model_logging():
+    """
+    Verifies that after 2 failed attempts, healing retries with the Gemini adapter,
+    and logs which model made each attempt on HealingLogRecord.
+    """
+    from backend.verification.healing_loop import healing_loop, gemini_adapter
+    from backend.verification.sandbox import ExecutionResult
+    from backend.schemas import TemplateLayoutConfig
+    from unittest.mock import patch
+
+    snippet = SnippetRecord(
+        id="snip_heal_model_test",
+        deck_id="deck_model_test",
+        slide_id=2,
+        language="python",
+        version="3.12",
+        source_code="print('broken code",
+        expected_output="fixed",
+        status="failed",
+    )
+    init_res = ExecutionResult(
+        snippet_id="snip_heal_model_test",
+        language="python",
+        version="3.12",
+        source_code=snippet.source_code,
+        wrapped_code=snippet.source_code,
+        command_executed="python3 main.py",
+        exit_code=1,
+        stderr="SyntaxError: unterminated string literal",
+    )
+    slide = {"id": 2, "type": "code", "title": "Python Syntax", "code": {"source": snippet.source_code}}
+    from backend.template_registry import template_registry
+    template_registry.scan_and_load()
+    config = list(template_registry.templates.values())[0] if template_registry.templates else None
+
+    # Mock Ollama for attempt 1 and 2 to fail, and Gemini for attempt 3 to return fixed code
+    attempts_recorded = []
+
+    def mock_request_llm_fix(language, version, source_code, error_log, attempt, model_name):
+        attempts_recorded.append((attempt, model_name))
+        if attempt <= 2:
+            return "print('still broken syntax"
+        else:
+            return "print('healed by gemini')"
+
+    with patch.object(healing_loop, "_request_llm_fix", side_effect=mock_request_llm_fix):
+        success, final_code, logs = healing_loop.heal_snippet(
+            snippet=snippet,
+            initial_result=init_res,
+            slide=slide,
+            config=config,
+            professor_name="Prof Test",
+            max_attempts=4,
+        )
+
+    # Check attempt counts and model names
+    assert len(logs) >= 3
+    # Attempt 1 and 2 used Ollama / qwen2.5:3b
+    assert logs[0].attempt_number == 1
+    assert "qwen" in logs[0].model_name or "phi" in logs[0].model_name
+    assert logs[1].attempt_number == 2
+    assert "qwen" in logs[1].model_name or "phi" in logs[1].model_name
+
+    # Attempt 3 used Gemini adapter!
+    assert logs[2].attempt_number == 3
+    assert logs[2].model_name == "gemini-2.5-flash"
+    assert attempts_recorded[2][1] == "gemini-2.5-flash"
+    assert success is True
+    assert "healed by gemini" in final_code
+
+
+def test_snippet_non_deterministic_output_detection_and_rejection_of_injection():
+    """
+    Verifies that running a snippet twice and detecting differing outputs flags
+    it as non-deterministic instead of injecting the non-deterministic output into the slide.
+    """
+    from backend.verification.sandbox import ExecutionResult
+    from backend.verification.output_injector import output_injector
+
+    slides = [
+        {
+            "id": 1,
+            "type": "code",
+            "title": "Random Timestamp Generator",
+            "code": {
+                "source": "import time; print(time.time())",
+                "expected_output": "Original expected output",
+            },
+        }
+    ]
+    snippet = SnippetRecord(
+        id="snip_random_time",
+        deck_id="deck_det_test",
+        slide_id=1,
+        language="python",
+        version="3.12",
+        source_code="import time; print(time.time())",
+        expected_output="Original expected output",
+        status="pending",
+    )
+
+    # Simulate ExecutionResult with differing outputs (flagged as non-deterministic)
+    res = ExecutionResult(
+        snippet_id="snip_random_time",
+        language="python",
+        version="3.12",
+        source_code=snippet.source_code,
+        wrapped_code=snippet.source_code,
+        command_executed="python3 main.py",
+        exit_code=0,
+        stdout="1729145678.123",
+        is_non_deterministic=True,
+        non_deterministic_details="Run 1: '1729145678.123' vs Run 2: '1729145678.456'",
+        sandbox_backend="docker",
+    )
+
+    mismatch, note = output_injector.inject_real_output(slides, snippet, res)
+
+    # Snippet must be marked needs_review and non-deterministic
+    assert snippet.is_non_deterministic is True
+    assert snippet.status == "needs_review"
+    assert "Non-Deterministic" in note
+
+    # Slide must be tagged with non_deterministic and NOT have the random output injected
+    assert slides[0].get("non_deterministic") is True
+    assert slides[0]["code"]["expected_output"] == "Original expected output"
+
+
+
